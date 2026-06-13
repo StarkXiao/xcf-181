@@ -39,8 +39,8 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n✅ 静态服务器已启动`);
-  console.log(`📍 本地访问: http://localhost:${PORT}/`);
-  console.log(`📁 根目录: ${ROOT}`);
-  console.log(`\n💡 提示: 也可直接双击 index.html 在浏览器打开，无需服务器`);
+  console.log('\nServer started');
+  console.log('Local: http://localhost:' + PORT + '/');
+  console.log('Root: ' + ROOT);
+  console.log('\nTip: You can also open index.html directly in browser');
 });

@@ -1,6 +1,4 @@
 (function() {
-  'use strict';
-
   function getGameSize() {
     var maxW = 800;
     var maxH = 600;
@@ -23,11 +21,17 @@
   }
 
   function initGame() {
-    var container = document.getElementById('game-container');
-    var loading = document.getElementById('loading');
+    if (typeof Phaser === 'undefined') {
+      var loading = document.getElementById('loading');
+      if (loading) {
+        loading.innerHTML = '<div style="color:#d32f2f">❌ Phaser 加载失败</div><div style="font-size:14px;margin-top:10px;color:#666">请检查网络连接或下载 phaser.min.js 到 js/ 目录</div>';
+      }
+      return;
+    }
 
+    var loading = document.getElementById('loading');
     if (loading) {
-      loading.remove();
+      loading.style.display = 'none';
     }
 
     var config = {
@@ -50,9 +54,9 @@
         }
       },
       scene: [
-        window.MountainRacer.MenuScene,
-        window.MountainRacer.GameScene,
-        window.MountainRacer.GameOverScene
+        MountainRacer.MenuScene,
+        MountainRacer.GameScene,
+        MountainRacer.GameOverScene
       ],
       render: {
         pixelArt: false,
@@ -67,28 +71,21 @@
 
     window.addEventListener('resize', function() {
       var size = getGameSize();
+      var container = document.getElementById('game-container');
       if (container) {
         container.style.width = size.width + 'px';
         container.style.height = size.height + 'px';
       }
     });
-  }
 
-  function checkPhaserLoaded() {
-    if (typeof Phaser !== 'undefined' &&
-        window.MountainRacer &&
-        window.MountainRacer.MenuScene &&
-        window.MountainRacer.GameScene &&
-        window.MountainRacer.GameOverScene) {
-      initGame();
-    } else {
-      setTimeout(checkPhaserLoaded, 100);
-    }
+    window.addEventListener('error', function(e) {
+      console.error('Game error:', e.message);
+    });
   }
 
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    checkPhaserLoaded();
+    setTimeout(initGame, 100);
   } else {
-    document.addEventListener('DOMContentLoaded', checkPhaserLoaded);
+    window.addEventListener('load', initGame);
   }
 })();

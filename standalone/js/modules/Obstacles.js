@@ -6,16 +6,39 @@
     this.terrain = terrain;
     this.config = config;
     this.obstacles = [];
+    this.currentBranch = 'main';
+    this.branchObstacles = {};
     this.spawn();
   };
 
   var proto = MountainRacer.Obstacles.prototype;
 
+  proto.getBranchConfig = function(branchId) {
+    var branches = this.config.branches || [];
+    for (var i = 0; i < branches.length; i++) {
+      if (branches[i].id === branchId) return branches[i];
+    }
+    return { obstacleMultiplier: 1.0 };
+  };
+
   proto.spawn = function() {
+    var branches = this.config.branches || [{ id: 'main', obstacleMultiplier: 1.0 }];
+
+    for (var b = 0; b < branches.length; b++) {
+      var branchId = branches[b].id;
+      this.branchObstacles[branchId] = this.generateForBranch(branchId);
+    }
+
+    this.obstacles = this.branchObstacles['main'] || [];
+  };
+
+  proto.generateForBranch = function(branchId) {
+    var branchCfg = this.getBranchConfig(branchId);
     var length = this.config.length;
-    var obstacleDensity = this.config.obstacleDensity;
+    var obstacleDensity = this.config.obstacleDensity * (branchCfg.obstacleMultiplier || 1.0);
     var totalCount = Math.floor(length * obstacleDensity);
     var lastX = 400;
+    var obstacles = [];
 
     for (var i = 0; i < totalCount; i++) {
       var gap = 150 + Math.random() * 200;
@@ -25,24 +48,111 @@
       var roll = Math.random();
 
       if (roll < 0.45) {
-        this.createRock(lastX);
+        obstacles.push(this.createRockData(lastX, branchId));
       } else if (roll < 0.75) {
-        this.createMud(lastX);
+        obstacles.push(this.createMudData(lastX, branchId));
       } else {
-        this.createRamp(lastX);
+        obstacles.push(this.createRampData(lastX, branchId));
+      }
+    }
+
+    return obstacles;
+  };
+
+  proto.createRockData = function(x, branchId) {
+    return {
+      type: 'rock',
+      x: x,
+      branch: branchId,
+      size: 18 + Math.random() * 18,
+      damage: 20,
+      slowdown: 0.5,
+      hit: false
+    };
+  };
+
+  proto.createMudData = function(x, branchId) {
+    return {
+      type: 'mud',
+      x: x,
+      branch: branchId,
+      width: 80 + Math.random() * 60,
+      height: 8,
+      damage: 0,
+      slowdown: 0.4,
+      hit: false
+    };
+  };
+
+  proto.createRampData = function(x, branchId) {
+    return {
+      type: 'ramp',
+      x: x,
+      branch: branchId,
+      width: 100,
+      rampHeight: 50,
+      damage: 0,
+      slowdown: 1,
+      boost: true,
+      hit: false
+    };
+  };
+
+  proto.regenerateForBranch = function(branchId) {
+    this.currentBranch = branchId;
+    this.clearRenderedObstacles();
+
+    var data = this.branchObstacles[branchId] || [];
+    this.obstacles = [];
+
+    for (var i = 0; i < data.length; i++) {
+      var obsData = data[i];
+      var container = null;
+
+      if (obsData.type === 'rock') {
+        container = this.createRockFromData(obsData);
+      } else if (obsData.type === 'mud') {
+        container = this.createMudFromData(obsData);
+      } else if (obsData.type === 'ramp') {
+        container = this.createRampFromData(obsData);
+      }
+
+      if (container) {
+        container.setData('dataIndex', i);
+        this.obstacles.push(container);
       }
     }
   };
 
-  proto.createRock = function(x) {
-    var terrainY = this.terrain.getHeight(x);
-    var size = 18 + Math.random() * 18;
+  proto.clearRenderedObstacles = function() {
+    for (var i = 0; i < this.obstacles.length; i++) {
+      var obs = this.obstacles[i];
+      var hitbox = obs.getData('hitbox');
+      if (hitbox) hitbox.destroy();
+      obs.destroy();
+    }
+    this.obstacles = [];
+  };
 
-    var container = this.scene.add.container(x, terrainY - size * 0.6);
+  proto.createRock = function(x) {
+    var data = this.createRockData(x, this.currentBranch);
+    var container = this.createRockFromData(data);
+    if (container) {
+      this.obstacles.push(container);
+    }
+    return container;
+  };
+
+  proto.createRockFromData = function(data) {
+    var terrainY = this.terrain.getHeightAtBranch(data.x, data.branch) || 450;
+    var size = data.size;
+
+    var container = this.scene.add.container(data.x, terrainY - size * 0.6);
     container.setDepth(12);
     container.setData('type', 'rock');
-    container.setData('damage', 20);
-    container.setData('slowdown', 0.5);
+    container.setData('damage', data.damage);
+    container.setData('slowdown', data.slowdown);
+    container.setData('hit', data.hit);
 
     var graphics = this.scene.add.graphics();
     var shade = 80 + Math.floor(Math.random() * 40);
@@ -80,25 +190,35 @@
     container.add(graphics);
     container.setSize(size * 1.8, size * 1.5);
 
-    var hitbox = this.scene.add.zone(x, terrainY - size * 0.6, size * 1.6, size * 1.2);
+    var hitbox = this.scene.add.zone(data.x, terrainY - size * 0.6, size * 1.6, size * 1.2);
     this.scene.physics.world.enable(hitbox);
     hitbox.body.setAllowGravity(false);
     hitbox.body.setImmovable(true);
     container.setData('hitbox', hitbox);
 
-    this.obstacles.push(container);
+    return container;
   };
 
   proto.createMud = function(x) {
-    var terrainY = this.terrain.getHeight(x);
-    var width = 80 + Math.random() * 60;
-    var height = 8;
+    var data = this.createMudData(x, this.currentBranch);
+    var container = this.createMudFromData(data);
+    if (container) {
+      this.obstacles.push(container);
+    }
+    return container;
+  };
 
-    var container = this.scene.add.container(x, terrainY - 2);
+  proto.createMudFromData = function(data) {
+    var terrainY = this.terrain.getHeightAtBranch(data.x, data.branch) || 450;
+    var width = data.width;
+    var height = data.height;
+
+    var container = this.scene.add.container(data.x, terrainY - 2);
     container.setDepth(7);
     container.setData('type', 'mud');
     container.setData('damage', 0);
-    container.setData('slowdown', 0.4);
+    container.setData('slowdown', data.slowdown);
+    container.setData('hit', false);
 
     var graphics = this.scene.add.graphics();
 
@@ -118,27 +238,37 @@
     container.add(graphics);
     container.setSize(width, height * 2);
 
-    var hitbox = this.scene.add.zone(x, terrainY - 2, width * 0.85, height * 1.5);
+    var hitbox = this.scene.add.zone(data.x, terrainY - 2, width * 0.85, height * 1.5);
     this.scene.physics.world.enable(hitbox);
     hitbox.body.setAllowGravity(false);
     hitbox.body.setImmovable(true);
     container.setData('hitbox', hitbox);
 
-    this.obstacles.push(container);
+    return container;
   };
 
   proto.createRamp = function(x) {
-    var terrainY = this.terrain.getHeight(x);
-    var width = 100;
-    var rampHeight = 50;
-    var terrainAngle = this.terrain.getAngle(x);
+    var data = this.createRampData(x, this.currentBranch);
+    var container = this.createRampFromData(data);
+    if (container) {
+      this.obstacles.push(container);
+    }
+    return container;
+  };
 
-    var container = this.scene.add.container(x, terrainY);
+  proto.createRampFromData = function(data) {
+    var terrainY = this.terrain.getHeightAtBranch(data.x, data.branch) || 450;
+    var width = data.width;
+    var rampHeight = data.rampHeight;
+    var terrainAngle = this.terrain.getAngle ? this.terrain.getAngle(data.x) : 0;
+
+    var container = this.scene.add.container(data.x, terrainY);
     container.setDepth(10);
     container.setData('type', 'ramp');
     container.setData('damage', 0);
     container.setData('slowdown', 1);
     container.setData('boost', true);
+    container.setData('hit', false);
 
     var graphics = this.scene.add.graphics();
 
@@ -173,13 +303,13 @@
     container.add(graphics);
     container.setSize(width, rampHeight + 10);
 
-    var hitbox = this.scene.add.zone(x, terrainY - rampHeight / 2, width * 0.9, rampHeight);
+    var hitbox = this.scene.add.zone(data.x, terrainY - rampHeight / 2, width * 0.9, rampHeight);
     this.scene.physics.world.enable(hitbox);
     hitbox.body.setAllowGravity(false);
     hitbox.body.setImmovable(true);
     container.setData('hitbox', hitbox);
 
-    this.obstacles.push(container);
+    return container;
   };
 
   proto.checkCollisions = function(carBounds, carPhysics) {
@@ -202,6 +332,10 @@
           result = { type: 'ramp', boost: obs.getData('boost') };
         } else if (type === 'rock') {
           obs.setData('hit', true);
+          var idx = obs.getData('dataIndex');
+          if (idx !== undefined && this.branchObstacles[this.currentBranch]) {
+            this.branchObstacles[this.currentBranch][idx].hit = true;
+          }
           this.createHitEffect(obs);
           result = { type: 'rock', damage: damage, slowdown: slowdown };
         } else if (type === 'mud') {
@@ -258,13 +392,8 @@
   };
 
   proto.destroy = function() {
-    for (var i = 0; i < this.obstacles.length; i++) {
-      var obs = this.obstacles[i];
-      var hitbox = obs.getData('hitbox');
-      if (hitbox) hitbox.destroy();
-      obs.destroy();
-    }
-    this.obstacles = [];
+    this.clearRenderedObstacles();
+    this.branchObstacles = {};
   };
 
   window.MountainRacer = MountainRacer;

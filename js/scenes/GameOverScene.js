@@ -18,6 +18,8 @@
     this.time = data.time || '00:00.00';
     this.health = data.health || 0;
     this.highScore = data.highScore || 0;
+    this.detailedStats = data.detailedStats || null;
+    this.currentBranch = data.currentBranch || 'main';
   };
 
   proto.create = function() {
@@ -26,7 +28,13 @@
 
     this.createBackground(width, height);
     this.createResultPanel(width, height);
-    this.createStats(width, height);
+
+    if (this.win && this.detailedStats) {
+      this.createDetailedStats(width, height);
+    } else {
+      this.createStats(width, height);
+    }
+
     this.createButtons(width, height);
   };
 
@@ -75,7 +83,7 @@
 
   proto.createResultPanel = function(width, height) {
     var panelW = 420;
-    var panelH = 430;
+    var panelH = this.win && this.detailedStats ? 520 : 430;
 
     var shadow = this.add.graphics();
     shadow.fillStyle(0x000000, 0.4);
@@ -125,6 +133,27 @@
     }
   };
 
+  proto.getBranchConfig = function(branchId) {
+    var config = MountainRacer.LEVEL_CONFIGS[this.level];
+    if (!config || !config.branches) return null;
+    for (var i = 0; i < config.branches.length; i++) {
+      if (config.branches[i].id === branchId) return config.branches[i];
+    }
+    return null;
+  };
+
+  proto.getBranchIcon = function(type) {
+    var icons = {
+      'main': '🛤️',
+      'risky': '🏔️',
+      'shortcut': '⚡',
+      'mountain': '⛰️',
+      'canyon': '🏜️',
+      'skyroad': '☁️'
+    };
+    return icons[type] || '🛤️';
+  };
+
   proto.createStats = function(width, height) {
     var config = MountainRacer.LEVEL_CONFIGS[this.level];
     var statsStartY = height / 2 - 25;
@@ -162,10 +191,156 @@
     }
   };
 
+  proto.createDetailedStats = function(width, height) {
+    var stats = this.detailedStats;
+    var panelW = 380;
+    var startY = height / 2 - 140;
+
+    var branchCfg = this.getBranchConfig(this.currentBranch);
+    var branchName = branchCfg ? branchCfg.name : '主路';
+    var branchIcon = branchCfg ? this.getBranchIcon(branchCfg.type) : '🛤️';
+
+    var headerY = startY + 10;
+    this.add.text(width / 2 - panelW / 2 + 15, headerY,
+      branchIcon + ' 当前路线: ' + branchName, {
+        fontSize: '16px',
+        fontWeight: 'bold',
+        color: '#333333'
+      }).setOrigin(0, 0.5);
+
+    var rewardMult = branchCfg ? branchCfg.rewardMultiplier : 1.0;
+    this.add.text(width / 2 + panelW / 2 - 15, headerY,
+      '奖励倍率 x' + rewardMult.toFixed(1), {
+        fontSize: '14px',
+        fontWeight: 'bold',
+        color: '#ff9800'
+      }).setOrigin(1, 0.5);
+
+    var scoreBreakdownY = headerY + 35;
+    this.add.text(width / 2 - panelW / 2 + 15, scoreBreakdownY, '📊 得分明细', {
+      fontSize: '14px',
+      fontWeight: 'bold',
+      color: '#666666'
+    }).setOrigin(0, 0.5);
+
+    var bonus = stats.bonusScores || {};
+    var breakdownItems = [
+      { label: '基础距离分', value: bonus.distance || 0, color: '#4caf50' },
+      { label: '时间奖励', value: bonus.timeBonus || 0, color: '#2196f3' },
+      { label: '生命奖励', value: bonus.healthBonus || 0, color: '#e91e63' },
+      { label: '路线奖励', value: bonus.branchBonus || 0, color: '#9c27b0' },
+      { label: '风格奖励', value: bonus.styleBonus || 0, color: '#ff9800' }
+    ];
+
+    for (var i = 0; i < breakdownItems.length; i++) {
+      var item = breakdownItems[i];
+      var y = scoreBreakdownY + 28 + i * 22;
+
+      var barBg = this.add.graphics();
+      barBg.fillStyle(0xf0f0f0, 1);
+      barBg.fillRoundedRect(width / 2 - panelW / 2 + 15, y - 8, panelW - 30, 18, 4);
+
+      var ratio = this.score > 0 ? item.value / this.score : 0;
+      var barWidth = Math.max(4, (panelW - 30) * ratio);
+      var bar = this.add.graphics();
+      bar.fillStyle(item.color, 0.8);
+      bar.fillRoundedRect(width / 2 - panelW / 2 + 15, y - 8, barWidth, 18, 4);
+
+      this.add.text(width / 2 - panelW / 2 + 22, y, item.label, {
+        fontSize: '11px',
+        fontWeight: 'bold',
+        color: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 2
+      }).setOrigin(0, 0.5);
+
+      this.add.text(width / 2 + panelW / 2 - 22, y, '+' + item.value, {
+        fontSize: '11px',
+        fontWeight: 'bold',
+        color: '#333333'
+      }).setOrigin(1, 0.5);
+    }
+
+    var totalY = scoreBreakdownY + 28 + breakdownItems.length * 22 + 10;
+    var totalLine = this.add.graphics();
+    totalLine.lineStyle(2, 0xdddddd, 1);
+    totalLine.beginPath();
+    totalLine.moveTo(width / 2 - panelW / 2 + 15, totalY);
+    totalLine.lineTo(width / 2 + panelW / 2 - 15, totalY);
+    totalLine.strokePath();
+
+    this.add.text(width / 2 - panelW / 2 + 15, totalY + 18, '总分', {
+      fontSize: '18px',
+      fontWeight: 'bold',
+      color: '#333333'
+    }).setOrigin(0, 0.5);
+
+    this.add.text(width / 2 + panelW / 2 - 15, totalY + 18, this.score.toString(), {
+      fontSize: '22px',
+      fontWeight: 'bold',
+      color: '#ff6b35'
+    }).setOrigin(1, 0.5);
+
+    var extraStatsY = totalY + 45;
+    var extraStats = [
+      { label: '最高时速', value: (stats.maxSpeed || 0) + ' km/h', icon: '🚗' },
+      { label: '跳跃连击', value: stats.jumpCombo || 0 + ' 次', icon: '🦘' },
+      { label: '行驶距离', value: Math.floor(stats.distance || 0) + ' m', icon: '📏' },
+      { label: '剩余生命', value: Math.floor(stats.health || 0) + '%', icon: '❤️' }
+    ];
+
+    for (var j = 0; j < extraStats.length; j++) {
+      var es = extraStats[j];
+      var ex = width / 2 - panelW / 2 + 15 + j * (panelW / 4);
+
+      var statBg = this.add.graphics();
+      statBg.fillStyle(0xf8f8f8, 1);
+      statBg.fillRoundedRect(ex, extraStatsY, panelW / 4 - 5, 50, 6);
+
+      this.add.text(ex + (panelW / 4 - 5) / 2, extraStatsY + 15, es.icon, {
+        fontSize: '18px'
+      }).setOrigin(0.5);
+
+      this.add.text(ex + (panelW / 4 - 5) / 2, extraStatsY + 36, es.value, {
+        fontSize: '11px',
+        fontWeight: 'bold',
+        color: '#333333'
+      }).setOrigin(0.5);
+    }
+
+    if (stats.branches && Object.keys(stats.branches).length > 1) {
+      var branchesY = extraStatsY + 70;
+      this.add.text(width / 2 - panelW / 2 + 15, branchesY, '🗺️ 路线探索', {
+        fontSize: '13px',
+        fontWeight: 'bold',
+        color: '#666666'
+      }).setOrigin(0, 0.5);
+
+      var branchIds = Object.keys(stats.branches);
+      for (var k = 0; k < branchIds.length; k++) {
+        var bid = branchIds[k];
+        var bcfg = this.getBranchConfig(bid);
+        var bdist = Math.floor(stats.branches[bid] || 0);
+        var bname = bcfg ? bcfg.name : bid;
+        var bcolor = bcfg ? bcfg.color : 0x888888;
+
+        var by = branchesY + 25 + k * 20;
+        var dot = this.add.graphics();
+        dot.fillStyle(bcolor, 1);
+        dot.fillCircle(width / 2 - panelW / 2 + 20, by, 5);
+
+        this.add.text(width / 2 - panelW / 2 + 32, by, bname + ': ' + bdist + 'm', {
+          fontSize: '11px',
+          color: '#555555'
+        }).setOrigin(0, 0.5);
+      }
+    }
+  };
+
   proto.createButtons = function(width, height) {
     var btnW = 160;
     var btnH = 48;
-    var btnY = height / 2 + 160;
+    var btnY = height / 2 + (this.win && this.detailedStats ? 220 : 160);
     var gap = 20;
     var totalW = btnW * 3 + gap * 2;
     var startX = width / 2 - totalW / 2 + btnW / 2;
