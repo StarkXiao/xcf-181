@@ -1042,39 +1042,39 @@
   };
 
   proto.renderForeground = function(length, height) {
-    var mainGraphics = this.scene.add.graphics();
-    mainGraphics.setDepth(5);
+    this.mainGraphics = this.scene.add.graphics();
+    this.mainGraphics.setDepth(5);
 
-    mainGraphics.fillGradientStyle(0x8b7355, 0x8b7355, 0x654321, 0x654321);
-    mainGraphics.beginPath();
-    mainGraphics.moveTo(0, height);
+    this.mainGraphics.fillGradientStyle(0x8b7355, 0x8b7355, 0x654321, 0x654321);
+    this.mainGraphics.beginPath();
+    this.mainGraphics.moveTo(0, height);
 
     for (var i = 0; i < this.points.length; i++) {
       var p = this.points[i];
-      mainGraphics.lineTo(p.x, p.y);
+      this.mainGraphics.lineTo(p.x, p.y);
     }
 
-    mainGraphics.lineTo(length, height);
-    mainGraphics.closePath();
-    mainGraphics.fillPath();
+    this.mainGraphics.lineTo(length, height);
+    this.mainGraphics.closePath();
+    this.mainGraphics.fillPath();
 
-    var topGraphics = this.scene.add.graphics();
-    topGraphics.setDepth(6);
-    topGraphics.lineStyle(5, 0x228b22, 1);
-    topGraphics.beginPath();
+    this.topGraphics = this.scene.add.graphics();
+    this.topGraphics.setDepth(6);
+    this.topGraphics.lineStyle(5, 0x228b22, 1);
+    this.topGraphics.beginPath();
 
     for (var j = 0; j < this.points.length; j++) {
       var p2 = this.points[j];
       if (j === 0) {
-        topGraphics.moveTo(p2.x, p2.y);
+        this.topGraphics.moveTo(p2.x, p2.y);
       } else {
-        topGraphics.lineTo(p2.x, p2.y);
+        this.topGraphics.lineTo(p2.x, p2.y);
       }
     }
-    topGraphics.strokePath();
+    this.topGraphics.strokePath();
 
-    var grassGraphics = this.scene.add.graphics();
-    grassGraphics.setDepth(6);
+    this.grassGraphics = this.scene.add.graphics();
+    this.grassGraphics.setDepth(6);
 
     for (var k = 0; k < this.points.length; k++) {
       var p3 = this.points[k];
@@ -1083,11 +1083,11 @@
         var nx = -Math.sin(angle);
         var ny = Math.cos(angle);
         var gh = 8 + Math.random() * 8;
-        grassGraphics.lineStyle(2, 0x32cd32, 0.8);
-        grassGraphics.beginPath();
-        grassGraphics.moveTo(p3.x, p3.y);
-        grassGraphics.lineTo(p3.x + nx * gh + (Math.random() - 0.5) * 4, p3.y - ny * gh);
-        grassGraphics.strokePath();
+        this.grassGraphics.lineStyle(2, 0x32cd32, 0.8);
+        this.grassGraphics.beginPath();
+        this.grassGraphics.moveTo(p3.x, p3.y);
+        this.grassGraphics.lineTo(p3.x + nx * gh + (Math.random() - 0.5) * 4, p3.y - ny * gh);
+        this.grassGraphics.strokePath();
       }
     }
 
@@ -1113,8 +1113,14 @@
   };
 
   proto.renderBranchIndicators = function() {
-    var branchPoints = this.config.branchPoints || [];
+    if (this.indicatorGraphics) {
+      for (var d = 0; d < this.indicatorGraphics.length; d++) {
+        this.indicatorGraphics[d].destroy();
+      }
+    }
     this.indicatorGraphics = [];
+
+    var branchPoints = this.config.branchPoints || [];
 
     for (var i = 0; i < branchPoints.length; i++) {
       var bp = branchPoints[i];
@@ -1141,22 +1147,23 @@
       signGfx.lineStyle(3, 0xff9800, 1);
       signGfx.strokeRoundedRect(-60, -30, 120, 50, 8);
 
-      var text = this.scene.add.text(0, -10, '🔀 分岔路口', {
+      this.indicatorGraphics.push(signGfx);
+
+      var text = this.scene.add.text(bp.x, y - 90, '🔀 分岔路口', {
         fontSize: '14px',
         fontWeight: 'bold',
         color: '#333333'
       }).setOrigin(0.5);
-      text.setScrollFactor(1);
+      text.setDepth(16);
 
-      var subText = this.scene.add.text(0, 8, '选择路线', {
+      var subText = this.scene.add.text(bp.x, y - 72, '选择路线', {
         fontSize: '11px',
         color: '#666666'
       }).setOrigin(0.5);
+      subText.setDepth(16);
 
-      signGfx.add(text);
-      signGfx.add(subText);
-
-      this.indicatorGraphics.push(signGfx);
+      this.indicatorGraphics.push(text);
+      this.indicatorGraphics.push(subText);
 
       var arrowGfx = this.scene.add.graphics();
       arrowGfx.setDepth(16);
@@ -1179,7 +1186,61 @@
   };
 
   proto.updateActivePath = function() {
-    var mainGraphics = null;
+    if (this.mainGraphics) this.mainGraphics.destroy();
+    if (this.topGraphics) this.topGraphics.destroy();
+    if (this.grassGraphics) this.grassGraphics.destroy();
+
+    var length = this.config.length;
+    var height = 600;
+
+    this.mainGraphics = this.scene.add.graphics();
+    this.mainGraphics.setDepth(5);
+
+    this.mainGraphics.fillGradientStyle(0x8b7355, 0x8b7355, 0x654321, 0x654321);
+    this.mainGraphics.beginPath();
+    this.mainGraphics.moveTo(0, height);
+
+    for (var i = 0; i < this.points.length; i++) {
+      var p = this.points[i];
+      this.mainGraphics.lineTo(p.x, p.y);
+    }
+
+    this.mainGraphics.lineTo(length, height);
+    this.mainGraphics.closePath();
+    this.mainGraphics.fillPath();
+
+    this.topGraphics = this.scene.add.graphics();
+    this.topGraphics.setDepth(6);
+    this.topGraphics.lineStyle(5, 0x228b22, 1);
+    this.topGraphics.beginPath();
+
+    for (var j = 0; j < this.points.length; j++) {
+      var p2 = this.points[j];
+      if (j === 0) {
+        this.topGraphics.moveTo(p2.x, p2.y);
+      } else {
+        this.topGraphics.lineTo(p2.x, p2.y);
+      }
+    }
+    this.topGraphics.strokePath();
+
+    this.grassGraphics = this.scene.add.graphics();
+    this.grassGraphics.setDepth(6);
+
+    for (var k = 0; k < this.points.length; k++) {
+      var p3 = this.points[k];
+      if (Math.random() < 0.08) {
+        var angle = this.getAngle(p3.x);
+        var nx = -Math.sin(angle);
+        var ny = Math.cos(angle);
+        var gh = 8 + Math.random() * 8;
+        this.grassGraphics.lineStyle(2, 0x32cd32, 0.8);
+        this.grassGraphics.beginPath();
+        this.grassGraphics.moveTo(p3.x, p3.y);
+        this.grassGraphics.lineTo(p3.x + nx * gh + (Math.random() - 0.5) * 4, p3.y - ny * gh);
+        this.grassGraphics.strokePath();
+      }
+    }
   };
 
   proto.destroy = function() {
@@ -1188,6 +1249,9 @@
         this.indicatorGraphics[i].destroy();
       }
     }
+    if (this.mainGraphics) { this.mainGraphics.destroy(); this.mainGraphics = null; }
+    if (this.topGraphics) { this.topGraphics.destroy(); this.topGraphics = null; }
+    if (this.grassGraphics) { this.grassGraphics.destroy(); this.grassGraphics = null; }
   };
 
   window.MountainRacer = MountainRacer;

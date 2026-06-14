@@ -155,7 +155,7 @@
   };
 
   proto.createStats = function(width, height) {
-    var config = MountainRacer.LEVEL_CONFIGS[this.level];
+    var config = MountainRacer.LEVEL_CONFIGS[this.level] || { name: 'Level ' + this.level };
     var statsStartY = height / 2 - 25;
     var statWidth = 340;
     var labelWidth = 100;

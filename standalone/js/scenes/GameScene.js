@@ -50,6 +50,14 @@
 
     this.branchSelectOpen = false;
     this.lastBranchPoint = -1;
+    this.dangerWarningActive = false;
+    this.dangerWarningShown = false;
+    this.mergeWarningShown = false;
+    this.unlockedAchievements = [];
+    this.hiddenProgress = {};
+    this.activeSpeedBoost = null;
+    this.triggeredEvents = {};
+    this.speedBoostEndTime = 0;
 
     this.loadUnlockedBranches();
   };
@@ -451,6 +459,12 @@
     this.damageCooldown = Math.max(0, this.damageCooldown - delta);
     this.rampCooldown = Math.max(0, this.rampCooldown - delta);
 
+    this.checkSpecialEvents(carX, delta);
+
+    if (this.activeSpeedBoost && Date.now() > this.speedBoostEndTime) {
+      this.activeSpeedBoost = null;
+    }
+
     if (Math.random() < 0.02) {
       this.checkAchievements();
     }
@@ -832,6 +846,7 @@
     if (!this.branchSelectOpen) return;
 
     this.terrain.switchBranch(branchId);
+    this.terrain.updateActivePath();
     this.scoreManager.setCurrentBranch(branchId, this.carPhysics.car.x);
 
     var colorHex = '#' + config.color.toString(16).padStart(6, '0');
@@ -899,6 +914,7 @@
     if (!mergeInfo) return;
 
     var oldBranch = this.terrain.performMerge(mergeInfo.mergeX);
+    this.terrain.updateActivePath();
     this.scoreManager.setCurrentBranch('main', carX);
     this.scoreManager.mergeCount++;
 
@@ -923,6 +939,80 @@
     this.checkAchievements();
   };
 
+  proto.checkSpecialEvents = function(carX, delta) {
+    var branchCfg = this.terrain.getBranchConfig(this.terrain.currentBranch);
+    if (!branchCfg || !branchCfg.specialEvents) return;
+
+    var branchKey = this.terrain.currentBranch;
+    if (!this.triggeredEvents[branchKey]) {
+      this.triggeredEvents[branchKey] = {};
+    }
+
+    for (var i = 0; i < branchCfg.specialEvents.length; i++) {
+      var evt = branchCfg.specialEvents[i];
+      var evtKey = evt.type + '_' + evt.x;
+
+      if (this.triggeredEvents[branchKey][evtKey]) continue;
+
+      var distToEvent = carX - evt.x;
+      if (distToEvent < -30) continue;
+      if (distToEvent > 50) continue;
+
+      this.triggeredEvents[branchKey][evtKey] = true;
+      this.handleSpecialEvent(evt, carX);
+    }
+  };
+
+  proto.handleSpecialEvent = function(evt, carX) {
+    var self = this;
+    switch (evt.type) {
+      case 'speedBoost':
+        this.activeSpeedBoost = evt;
+        this.speedBoostEndTime = Date.now() + (evt.duration || 3) * 1000;
+        this.carPhysics.vx *= (evt.multiplier || 1.3);
+        this.showFloatingText(carX, this.carPhysics.car.y - 80,
+          '🚀 ' + (evt.name || '加速带') + '!', 0x00bcd4);
+        this.createSpeedBoostEffect(carX);
+        break;
+
+      case 'riskBonus':
+        if (evt.condition && evt.condition.type === 'noDamage') {
+          var range = evt.condition.range || 500;
+          if (this.scoreManager.damageTaken <= 0 && this.damageCooldown <= 0) {
+            this.scoreManager.addBonusScore(evt.points || 100, 'riskBonus');
+            this.showFloatingText(carX, this.carPhysics.car.y - 80,
+              '🏆 ' + (evt.name || '险道奖励') + ': +' + (evt.points || 100), 0xff9800);
+          }
+        }
+        break;
+
+      case 'coinRain':
+        this.scoreManager.addBonusScore(evt.points || 200, 'collectibleBonus');
+        this.showFloatingText(carX, this.carPhysics.car.y - 80,
+          '💰 ' + (evt.name || '金币雨') + ': +' + (evt.points || 200), 0xffd700);
+        break;
+    }
+  };
+
+  proto.createSpeedBoostEffect = function(x) {
+    var y = this.carPhysics.car.y;
+    for (var i = 0; i < 10; i++) {
+      var px = x + Phaser.Math.Between(-30, 30);
+      var py = y + Phaser.Math.Between(-10, 10);
+      var spark = this.add.circle(px, py, 2 + Math.random() * 3, 0x00e5ff);
+      spark.setDepth(16);
+      this.tweens.add({
+        targets: spark,
+        x: spark.x - 100 - Math.random() * 100,
+        alpha: 0,
+        scale: 0.3,
+        duration: 400 + Math.random() * 200,
+        ease: 'Power2',
+        onComplete: (function(s) { return function() { s.destroy(); }; })(spark)
+      });
+    }
+  };
+
   proto.checkHiddenUnlocks = function() {
     var branches = this.terrain.config.branches || [];
     var stats = {
@@ -943,6 +1033,8 @@
 
       if (this.terrain.checkHiddenUnlock(branch.unlockCondition, stats)) {
         this.terrain.unlockHiddenBranch(branch.id);
+        this.dangerZones.unlockBranch(branch.id);
+        this.terrain.renderBranchIndicators();
         this.showFloatingText(this.carPhysics.car.x, this.carPhysics.car.y - 100,
           '🔓 发现隐藏路线: ' + branch.name + '!', 0x9c27b0);
         this.showHiddenUnlockNotification(branch);
@@ -1008,7 +1100,7 @@
       duration: 500,
       ease: 'Back.out',
       onComplete: function() {
-        self.scene.tweens.add({
+        self.tweens.add({
           targets: self.hiddenHintText,
           alpha: 0,
           delay: 3000,
@@ -1132,7 +1224,7 @@
       duration: 600,
       ease: 'Back.out',
       onComplete: function() {
-        self.scene.tweens.add({
+        self.tweens.add({
           targets: container,
           alpha: 0,
           delay: 3500,
@@ -1165,7 +1257,7 @@
       duration: 500,
       ease: 'Back.out',
       onComplete: function() {
-        this.scene.tweens.add({
+        this.tweens.add({
           targets: notif,
           alpha: 0,
           delay: 2000,

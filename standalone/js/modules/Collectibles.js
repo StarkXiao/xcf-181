@@ -28,7 +28,7 @@
       var branchId = branches[b].id;
       this.branchCollectibles[branchId] = this.generateForBranch(branchId);
     }
-    this.collectibles = this.branchCollectibles['main'] || [];
+    this.regenerateForBranch('main');
   };
 
   proto.generateForBranch = function(branchId) {

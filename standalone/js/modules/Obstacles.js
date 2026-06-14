@@ -29,7 +29,7 @@
       this.branchObstacles[branchId] = this.generateForBranch(branchId);
     }
 
-    this.obstacles = this.branchObstacles['main'] || [];
+    this.regenerateForBranch('main');
   };
 
   proto.generateForBranch = function(branchId) {

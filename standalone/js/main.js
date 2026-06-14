@@ -68,6 +68,7 @@
     };
 
     var game = new Phaser.Game(config);
+    window.__game = game;
 
     window.addEventListener('resize', function() {
       var size = getGameSize();

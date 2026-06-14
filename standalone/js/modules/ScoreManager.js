@@ -159,11 +159,13 @@
 
   proto.getBranchConfig = function(branchId) {
     var config = MountainRacer.LEVEL_CONFIGS[this.level];
-    if (!config || !config.branches) return null;
+    if (!config || !config.branches) {
+      return { rewardMultiplier: 1.0, riskLevel: 1 };
+    }
     for (var i = 0; i < config.branches.length; i++) {
       if (config.branches[i].id === branchId) return config.branches[i];
     }
-    return null;
+    return { rewardMultiplier: 1.0, riskLevel: 1 };
   };
 
   proto.updateStats = function(carPhysics) {
@@ -192,6 +194,7 @@
       this.isComplete = true;
 
       var config = MountainRacer.LEVEL_CONFIGS[this.level];
+      if (!config) return false;
       var weightConfig = config.weightConfig || {
         baseMultiplier: 1.0,
         riskWeightPerLevel: 0.15,
