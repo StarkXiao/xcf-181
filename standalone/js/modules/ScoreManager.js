@@ -95,6 +95,15 @@
     this.lastSegmentX = 0;
     this.segmentInterval = 500;
 
+    this.starRating = null;
+    this.hiddenObjectives = {
+      hiddenBranchesVisited: 0,
+      totalHiddenBranches: 0,
+      allBranchesExplored: false,
+      secretEventsTriggered: 0,
+      totalSecretEvents: 0
+    };
+
     this.applyMidGameSettings = function(settings) {
       var keys = Object.keys(settings || {});
       for (var i = 0; i < keys.length; i++) {
@@ -642,10 +651,12 @@
 
       this.calculateBranchScoreBreakdown();
       this.calculateScoreImprovements();
+      this.calculateStarRating();
 
       this.saveHighScore();
       this.saveBestStats();
       this.saveBranchProgress();
+      this.saveStarRating();
 
       return true;
     }
@@ -1134,6 +1145,224 @@
       var key = 'mountain_racer_settings';
       localStorage.setItem(key, JSON.stringify(settings));
     } catch (e) {}
+  };
+
+  proto.getStarConfig = function() {
+    var config = MountainRacer.LEVEL_CONFIGS[this.level];
+    if (!config) return null;
+    var lengthKm = config.length / 1000;
+    var defaultTimeTargets = {
+      1: { threeStar: 50, twoStar: 70 },
+      2: { threeStar: 80, twoStar: 110 },
+      3: { threeStar: 115, twoStar: 160 }
+    };
+    var defaultHealthTargets = {
+      1: { threeStar: 85, twoStar: 60 },
+      2: { threeStar: 75, twoStar: 50 },
+      3: { threeStar: 65, twoStar: 40 }
+    };
+    var levelIdx = this.level || 1;
+    return {
+      time: config.starConfig && config.starConfig.time ?
+        config.starConfig.time :
+        defaultTimeTargets[levelIdx] || defaultTimeTargets[1],
+      health: config.starConfig && config.starConfig.health ?
+        config.starConfig.health :
+        defaultHealthTargets[levelIdx] || defaultHealthTargets[1],
+      requiresAllBranches: true,
+      requiresPerfectBonus: false
+    };
+  };
+
+  proto.updateHiddenObjectives = function() {
+    var config = MountainRacer.LEVEL_CONFIGS[this.level];
+    if (!config || !config.branches) return;
+
+    var totalHidden = 0;
+    var visitedHidden = 0;
+    var totalBranches = config.branches.length;
+    var uniqueVisited = Object.keys(this.branchDistances).length;
+
+    for (var i = 0; i < config.branches.length; i++) {
+      var b = config.branches[i];
+      if (b.hidden) {
+        totalHidden++;
+        if (this.branchDistances[b.id] && this.branchDistances[b.id] > 100) {
+          visitedHidden++;
+        }
+      }
+    }
+
+    this.hiddenObjectives.hiddenBranchesVisited = visitedHidden;
+    this.hiddenObjectives.totalHiddenBranches = totalHidden;
+    this.hiddenObjectives.allBranchesExplored = uniqueVisited >= totalBranches;
+
+    var totalSecret = 0;
+    var triggeredSecret = 0;
+    for (var j = 0; j < config.branches.length; j++) {
+      var branch = config.branches[j];
+      if (branch.specialEvents) {
+        for (var k = 0; k < branch.specialEvents.length; k++) {
+          var evt = branch.specialEvents[k];
+          if (evt.type === 'secretBonus') {
+            totalSecret++;
+          }
+        }
+      }
+    }
+    this.hiddenObjectives.totalSecretEvents = totalSecret;
+    this.hiddenObjectives.secretEventsTriggered = triggeredSecret;
+  };
+
+  proto.calculateStarRating = function() {
+    if (!this.isComplete) {
+      this.starRating = { stars: 0, details: {} };
+      return this.starRating;
+    }
+
+    this.updateHiddenObjectives();
+    var starConfig = this.getStarConfig();
+    var elapsed = this.getElapsedTime();
+    var healthPct = this.health;
+
+    var timeThreeStar = elapsed <= starConfig.time.threeStar;
+    var timeTwoStar = elapsed <= starConfig.time.twoStar;
+    var healthThreeStar = healthPct >= starConfig.health.threeStar;
+    var healthTwoStar = healthPct >= starConfig.health.twoStar;
+    var hiddenDone = this.hiddenObjectives.allBranchesExplored ||
+      (starConfig.requiresAllBranches === false && this.hiddenObjectives.hiddenBranchesVisited > 0) ||
+      (this.hiddenObjectives.totalHiddenBranches > 0 &&
+        this.hiddenObjectives.hiddenBranchesVisited >= this.hiddenObjectives.totalHiddenBranches);
+
+    var stars = 0;
+    var starConditions = {
+      star1: {
+        achieved: true,
+        label: '通关关卡',
+        detail: '成功到达终点',
+        icon: '🏁'
+      },
+      star2: {
+        achieved: timeTwoStar && healthTwoStar,
+        label: '时间与生命',
+        detail: '用时 ≤ ' + starConfig.time.twoStar + '秒 且 生命 ≥ ' + starConfig.health.twoStar + '%',
+        actual: '用时 ' + Math.floor(elapsed) + '秒 / 生命 ' + Math.floor(healthPct) + '%',
+        icon: '⏱❤️'
+      },
+      star3: {
+        achieved: timeThreeStar && healthThreeStar && hiddenDone,
+        label: '完美探索',
+        detail: '用时 ≤ ' + starConfig.time.threeStar + '秒 且 生命 ≥ ' + starConfig.health.threeStar + '% 且 探索所有路线',
+        actual: '用时 ' + Math.floor(elapsed) + '秒 / 生命 ' + Math.floor(healthPct) + '% / 路线 ' +
+          Object.keys(this.branchDistances).length + '/' +
+          (MountainRacer.LEVEL_CONFIGS[this.level] && MountainRacer.LEVEL_CONFIGS[this.level].branches ?
+            MountainRacer.LEVEL_CONFIGS[this.level].branches.length : 1),
+        icon: '✨🗺️'
+      }
+    };
+
+    if (starConditions.star1.achieved) stars++;
+    if (starConditions.star2.achieved) stars++;
+    if (starConditions.star3.achieved) stars++;
+
+    this.starRating = {
+      stars: stars,
+      maxStars: 3,
+      conditions: starConditions,
+      breakdown: {
+        time: {
+          value: Math.floor(elapsed),
+          threeStarTarget: starConfig.time.threeStar,
+          twoStarTarget: starConfig.time.twoStar,
+          threeStar: timeThreeStar,
+          twoStar: timeTwoStar
+        },
+        health: {
+          value: Math.floor(healthPct),
+          threeStarTarget: starConfig.health.threeStar,
+          twoStarTarget: starConfig.health.twoStar,
+          threeStar: healthThreeStar,
+          twoStar: healthTwoStar
+        },
+        hidden: {
+          allBranchesExplored: this.hiddenObjectives.allBranchesExplored,
+          hiddenBranchesVisited: this.hiddenObjectives.hiddenBranchesVisited,
+          totalHiddenBranches: this.hiddenObjectives.totalHiddenBranches,
+          branchesVisited: Object.keys(this.branchDistances).length,
+          totalBranches: MountainRacer.LEVEL_CONFIGS[this.level] &&
+            MountainRacer.LEVEL_CONFIGS[this.level].branches ?
+            MountainRacer.LEVEL_CONFIGS[this.level].branches.length : 1,
+          achieved: hiddenDone
+        }
+      }
+    };
+
+    return this.starRating;
+  };
+
+  proto.getStarRating = function() {
+    if (!this.starRating) {
+      this.calculateStarRating();
+    }
+    return this.starRating;
+  };
+
+  proto.saveStarRating = function() {
+    try {
+      var key = 'mountain_racer_stars_' + this.level;
+      var saved = localStorage.getItem(key);
+      var currentBest = saved ? JSON.parse(saved) : { stars: 0, totalStars: 3 };
+
+      if (!this.starRating) {
+        this.calculateStarRating();
+      }
+
+      if (this.isComplete && this.starRating.stars > currentBest.stars) {
+        localStorage.setItem(key, JSON.stringify({
+          stars: this.starRating.stars,
+          totalStars: 3,
+          timestamp: Date.now(),
+          score: this.score,
+          time: this.getElapsedTime(),
+          health: this.health,
+          breakdown: this.starRating.breakdown
+        }));
+      }
+    } catch (e) {}
+  };
+
+  proto.getSavedStarRating = function(level) {
+    try {
+      var lvl = level || this.level;
+      var key = 'mountain_racer_stars_' + lvl;
+      var saved = localStorage.getItem(key);
+      return saved ? JSON.parse(saved) : { stars: 0, totalStars: 3 };
+    } catch (e) {
+      return { stars: 0, totalStars: 3 };
+    }
+  };
+
+  proto.getChapterStarSummary = function() {
+    try {
+      var totalLevels = 3;
+      var result = {
+        totalStars: 0,
+        maxStars: totalLevels * 3,
+        levelStars: {},
+        completionPercent: 0
+      };
+
+      for (var lvl = 1; lvl <= totalLevels; lvl++) {
+        var saved = this.getSavedStarRating(lvl);
+        result.levelStars[lvl] = saved.stars || 0;
+        result.totalStars += saved.stars || 0;
+      }
+
+      result.completionPercent = Math.floor((result.totalStars / result.maxStars) * 100);
+      return result;
+    } catch (e) {
+      return { totalStars: 0, maxStars: 9, levelStars: {}, completionPercent: 0 };
+    }
   };
 
   proto.destroy = function() {};

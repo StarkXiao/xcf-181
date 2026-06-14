@@ -25,6 +25,7 @@
     this.runHistory = data.runHistory || [];
     this.previousBestStats = data.previousBestStats || null;
     this.replayComparison = data.replayComparison || null;
+    this.starRating = data.starRating || null;
     this.activeTab = 'summary';
     this.highScoreAnimationPlayed = false;
     this.tabContentElements = [];
@@ -93,7 +94,8 @@
 
   proto.createResultPanel = function(width, height) {
     var panelW = 420;
-    var panelH = this.win && this.detailedStats ? 780 : 430;
+    var needStarPanel = this.win && this.starRating;
+    var panelH = needStarPanel ? 980 : (this.win && this.detailedStats ? 780 : 430);
 
     var shadow = this.add.graphics();
     shadow.fillStyle(0x000000, 0.4);
@@ -124,7 +126,9 @@
       color: '#666666'
     }).setOrigin(0.5);
 
-    if (this.win && this.performanceGrade) {
+    if (this.win && this.starRating) {
+      this.createStarRatingPanel(width, height, panelH);
+    } else if (this.win && this.performanceGrade) {
       this.createPerformanceGrade(width, height, panelH);
     }
 
@@ -240,6 +244,276 @@
     }
   };
 
+  proto.createStarRatingPanel = function(width, height, panelH) {
+    var starRating = this.starRating;
+    var baseY = height / 2 - panelH / 2 + 195;
+    var stars = starRating.stars || 0;
+    var maxStars = starRating.maxStars || 3;
+
+    var starContainer = this.add.container(width / 2, baseY);
+
+    var bigStarSize = 52;
+    var starSpacing = 70;
+    var totalWidth = (maxStars - 1) * starSpacing;
+    var startX = -totalWidth / 2;
+
+    this.bigStars = [];
+
+    for (var i = 0; i < maxStars; i++) {
+      var starIdx = i;
+      var isAchieved = i < stars;
+
+      var starBg = this.add.graphics();
+      starBg.fillStyle(0xf8f9fa, 1);
+      starBg.fillCircle(0, 0, 36);
+      starBg.lineStyle(3, isAchieved ? 0xffd700 : 0xdddddd, 1);
+      starBg.strokeCircle(0, 0, 36);
+      starBg.x = startX + i * starSpacing;
+      starContainer.add(starBg);
+
+      var starChar = isAchieved ? '⭐' : '☆';
+      var bigStar = this.add.text(0, 0, starChar, {
+        fontSize: bigStarSize + 'px',
+        color: isAchieved ? '#ffd700' : '#cccccc'
+      }).setOrigin(0.5);
+      bigStar.x = startX + i * starSpacing;
+      bigStar.setAlpha(isAchieved ? 0 : 1);
+      starContainer.add(bigStar);
+      this.bigStars.push(bigStar);
+
+      if (isAchieved) {
+        (function(starRef, idx, achieved) {
+          var delay = 400 + idx * 600;
+          setTimeout(function() {
+            starRef.setAlpha(1);
+            if (achieved) {
+              starRef.scene.tweens.add({
+                targets: starRef,
+                scale: { from: 0.3, to: 1.2 },
+                duration: 500,
+                ease: 'Back.out',
+                onComplete: function() {
+                  starRef.scene.tweens.add({
+                    targets: starRef,
+                    scale: { from: 1.2, to: 1 },
+                    duration: 200,
+                    ease: 'Sine.out'
+                  });
+                }
+              });
+            }
+          }, delay);
+        })(bigStar, starIdx, isAchieved);
+      }
+    }
+
+    var resultLabel = '';
+    var resultColor = '#cccccc';
+    if (stars === 3) {
+      resultLabel = '🌟 完美通关! 🌟';
+      resultColor = '#ffd700';
+    } else if (stars === 2) {
+      resultLabel = '🎉 优秀表现!';
+      resultColor = '#ff9800';
+    } else if (stars === 1) {
+      resultLabel = '✅ 成功通关';
+      resultColor = '#4caf50';
+    }
+
+    var labelText = this.add.text(0, 55, resultLabel, {
+      fontSize: '20px',
+      fontWeight: 'bold',
+      color: resultColor
+    }).setOrigin(0.5);
+    starContainer.add(labelText);
+
+    this.createStarConditionsDetail(width, height, panelH, baseY + 100);
+  };
+
+  proto.createStarConditionsDetail = function(width, height, panelH, startY) {
+    var starRating = this.starRating;
+    var conditions = starRating.conditions || {};
+    var breakdown = starRating.breakdown || {};
+    var leftX = width / 2 - 180;
+    var panelW = 360;
+
+    var header = this.add.graphics();
+    header.fillStyle(0xf8f9fa, 1);
+    header.fillRoundedRect(leftX, startY - 20, panelW, 24, 8);
+    header.lineStyle(1, 0xdee2e6, 1);
+    header.strokeRoundedRect(leftX, startY - 20, panelW, 24, 8);
+
+    var headerText = this.add.text(width / 2, startY - 8, '📋 星级达成条件', {
+      fontSize: '13px',
+      fontWeight: 'bold',
+      color: '#495057'
+    }).setOrigin(0.5);
+
+    var conditionKeys = ['star1', 'star2', 'star3'];
+    for (var i = 0; i < conditionKeys.length; i++) {
+      var key = conditionKeys[i];
+      var cond = conditions[key];
+      if (!cond) continue;
+
+      var rowY = startY + 12 + i * 52;
+
+      var rowBg = this.add.graphics();
+      rowBg.fillStyle(cond.achieved ? 0xe8f5e9 : 0xfafafa, 1);
+      rowBg.fillRoundedRect(leftX, rowY - 18, panelW, 48, 8);
+      rowBg.lineStyle(1, cond.achieved ? 0x4caf50 : 0xe0e0e0, 1);
+      rowBg.strokeRoundedRect(leftX, rowY - 18, panelW, 48, 8);
+
+      var iconText = this.add.text(leftX + 15, rowY, cond.icon || '⭐', {
+        fontSize: '20px'
+      }).setOrigin(0, 0.5);
+
+      var starNum = this.add.text(leftX + 50, rowY - 10,
+        (i + 1) + '★ ' + cond.label, {
+          fontSize: '13px',
+          fontWeight: 'bold',
+          color: cond.achieved ? '#2e7d32' : '#666666'
+        }).setOrigin(0, 0.5);
+
+      var detailText = this.add.text(leftX + 50, rowY + 8, cond.detail, {
+        fontSize: '10px',
+        color: cond.achieved ? '#4caf50' : '#999999'
+      }).setOrigin(0, 0.5);
+
+      var statusChar = cond.achieved ? '✅' : '⭕';
+      var statusText = this.add.text(leftX + panelW - 18, rowY, statusChar, {
+        fontSize: '18px'
+      }).setOrigin(1, 0.5);
+
+      if (cond.actual && !cond.achieved) {
+        var actualText = this.add.text(leftX + panelW - 18, rowY + 10, cond.actual, {
+          fontSize: '9px',
+          color: '#ff9800',
+          fontStyle: 'italic'
+        }).setOrigin(1, 0.5);
+      }
+    }
+
+    var dimY = startY + 12 + 3 * 52 + 12;
+    this.createStarDimensionBars(width, dimY, breakdown);
+  };
+
+  proto.createStarDimensionBars = function(width, startY, breakdown) {
+    var panelW = 360;
+    var leftX = width / 2 - 180;
+    var barMaxWidth = 200;
+    var barHeight = 14;
+
+    var header = this.add.graphics();
+    header.fillStyle(0xf0f4ff, 1);
+    header.fillRoundedRect(leftX, startY, panelW, 22, 6);
+    var headerText = this.add.text(width / 2, startY + 11, '📊 三维度达成度', {
+      fontSize: '12px',
+      fontWeight: 'bold',
+      color: '#2196f3'
+    }).setOrigin(0.5);
+
+    var timeData = breakdown.time || {};
+    var healthData = breakdown.health || {};
+    var hiddenData = breakdown.hidden || {};
+
+    var timePct = Math.min(100,
+      (timeData.threeStarTarget && timeData.value > 0) ?
+      Math.max(0, Math.min(100, (timeData.threeStarTarget / Math.max(1, timeData.value)) * 100)) : 0);
+    var healthPct = healthData.value || 0;
+    var hiddenPct = hiddenData.totalBranches > 0 ?
+      ((hiddenData.branchesVisited || 0) / hiddenData.totalBranches) * 100 : 0;
+
+    var dimensions = [
+      {
+        icon: '⏱',
+        label: '完成时间',
+        pct: timePct,
+        value: (timeData.value || 0) + 's',
+        target: '目标≤' + (timeData.threeStarTarget || 0) + 's / ≤' + (timeData.twoStarTarget || 0) + 's',
+        threeStar: timeData.threeStar,
+        twoStar: timeData.twoStar,
+        color: 0x2196f3,
+        colorStr: '#2196f3'
+      },
+      {
+        icon: '❤️',
+        label: '剩余生命',
+        pct: healthPct,
+        value: (healthData.value || 0) + '%',
+        target: '目标≥' + (healthData.threeStarTarget || 0) + '% / ≥' + (healthData.twoStarTarget || 0) + '%',
+        threeStar: healthData.threeStar,
+        twoStar: healthData.twoStar,
+        color: 0xe91e63,
+        colorStr: '#e91e63'
+      },
+      {
+        icon: '🗺️',
+        label: '隐藏目标',
+        pct: hiddenPct,
+        value: (hiddenData.branchesVisited || 0) + '/' + (hiddenData.totalBranches || 0) + ' 路线',
+        target: hiddenData.totalHiddenBranches > 0 ?
+          '探索所有' + (hiddenData.totalBranches || 0) + '条路线 (含' + hiddenData.totalHiddenBranches + '隐藏)' :
+          '探索所有路线',
+        threeStar: hiddenData.achieved,
+        twoStar: hiddenData.branchesVisited > 1,
+        color: 0x9c27b0,
+        colorStr: '#9c27b0'
+      }
+    ];
+
+    for (var d = 0; d < dimensions.length; d++) {
+      var dim = dimensions[d];
+      var y = startY + 35 + d * 46;
+
+      var rowBg = this.add.graphics();
+      rowBg.fillStyle(d % 2 === 0 ? 0xfafafa : 0xf8f9fa, 1);
+      rowBg.fillRoundedRect(leftX, y - 14, panelW, 42, 6);
+
+      var iconT = this.add.text(leftX + 10, y, dim.icon, {
+        fontSize: '16px'
+      }).setOrigin(0, 0.5);
+
+      var labelT = this.add.text(leftX + 35, y - 8, dim.label, {
+        fontSize: '11px',
+        fontWeight: 'bold',
+        color: '#333333'
+      }).setOrigin(0, 0.5);
+
+      var targetT = this.add.text(leftX + 35, y + 7, dim.target, {
+        fontSize: '9px',
+        color: '#999999'
+      }).setOrigin(0, 0.5);
+
+      var barX = leftX + 145;
+      var barBg = this.add.graphics();
+      barBg.fillStyle(0xe0e0e0, 0.6);
+      barBg.fillRoundedRect(barX, y - 6, barMaxWidth, barHeight, 7);
+
+      var fillW = Math.max(3, (dim.pct / 100) * barMaxWidth);
+      var barFill = this.add.graphics();
+      barFill.fillStyle(dim.color, 0.9);
+      barFill.fillRoundedRect(barX, y - 6, fillW, barHeight, 7);
+
+      var valueT = this.add.text(barX + barMaxWidth + 5, y, dim.value, {
+        fontSize: '11px',
+        fontWeight: 'bold',
+        color: dim.colorStr
+      }).setOrigin(0, 0.5);
+
+      if (dim.threeStar) {
+        var markT = this.add.text(barX + barMaxWidth - 5, y - 12, '★★★', {
+          fontSize: '10px',
+          color: '#ffd700'
+        }).setOrigin(1, 0.5);
+      } else if (dim.twoStar) {
+        var mark2T = this.add.text(barX + barMaxWidth - 5, y - 12, '★★', {
+          fontSize: '10px',
+          color: '#ff9800'
+        }).setOrigin(1, 0.5);
+      }
+    }
+  };
+
   proto.createPerformanceGrade = function(width, height, panelH) {
     var grade = this.performanceGrade;
     var gradeY = height / 2 - panelH / 2 + 180;
@@ -351,7 +625,7 @@
 
   proto.createTabs = function(width, height) {
     var self = this;
-    var tabY = height / 2 - 95;
+    var tabY = this.starRating ? (height / 2 + 105) : (height / 2 - 95);
     var tabWidth = 120;
     var tabHeight = 32;
     var tabGap = 8;
@@ -1290,7 +1564,10 @@
   proto.createButtons = function(width, height) {
     var btnW = 160;
     var btnH = 48;
-    var btnY = height / 2 + (this.win && this.detailedStats ? 310 : 160);
+    var panelOffset = 160;
+    if (this.win && this.starRating) panelOffset = 410;
+    else if (this.win && this.detailedStats) panelOffset = 310;
+    var btnY = height / 2 + panelOffset;
     var gap = 20;
     var totalW = btnW * 3 + gap * 2;
     var startX = width / 2 - totalW / 2 + btnW / 2;

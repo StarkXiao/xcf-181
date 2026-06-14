@@ -29,8 +29,7 @@
 
     var startX = 80;
     var startY = this.terrain.getHeight(startX) - 60;
-    var selectedCar = MountainRacer.getSelectedCar();
-    this.carPhysics = new MountainRacer.CarPhysics(this, selectedCar);
+    this.carPhysics = new MountainRacer.CarPhysics(this);
     this.carPhysics.create(startX, startY);
 
     this.obstacles = new MountainRacer.Obstacles(this, this.terrain, this.terrain.config);
@@ -63,22 +62,8 @@
     this.comboTextCooldown = 0;
 
     this.lastBreakthroughShown = null;
-    this.lastDamageX = 0;
 
     this.loadUnlockedBranches();
-    this.loadUnlockedAchievements();
-    this.checkAchievementCarUnlocks();
-    this.checkScoreCarUnlocks();
-  };
-
-  proto.loadUnlockedAchievements = function() {
-    try {
-      var key = 'mountain_racer_achievements';
-      var saved = localStorage.getItem(key);
-      this.unlockedAchievements = saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      this.unlockedAchievements = [];
-    }
   };
 
   proto.loadUnlockedBranches = function() {
@@ -967,7 +952,6 @@
         this.carPhysics.slowDown(collision.slowdown);
         var dead = this.scoreManager.takeDamage(collision.damage);
         this.damageCooldown = 800;
-        this.lastDamageX = carX;
         this.screenShake(6, 200);
 
         if (this.scoreManager.comboBreakReason === 'damage') {
@@ -1025,7 +1009,6 @@
           this.carPhysics.applyDamage();
           var destDead = this.scoreManager.takeDamage(damageAmount);
           this.damageCooldown = collision.type === 'barrel' ? 1000 : 600;
-          this.lastDamageX = carX;
           this.screenShake(shakeIntensity, shakeDuration);
 
           if (this.scoreManager.comboBreakReason === 'damage' && collision.type !== 'sign') {
@@ -1061,7 +1044,6 @@
     if (dangerResult.damage > 0) {
       var deadDanger = this.scoreManager.takeDamage(dangerResult.damage);
       this.damageCooldown = 500;
-      this.lastDamageX = carX;
       this.screenShake(4, 150);
       if (this.scoreManager.comboBreakReason === 'damage') {
         this.showFloatingText(carX, this.carPhysics.car.y - 100, '💥 连击中断!', 0xf44336);
@@ -1653,35 +1635,10 @@
       case 'riskBonus':
         if (evt.condition && evt.condition.type === 'noDamage') {
           var range = evt.condition.range || 500;
-          var inRange = true;
-
-          if (this.lastDamageX !== undefined && this.lastDamageX > 0) {
-            var distSinceDamage = carX - this.lastDamageX;
-            inRange = distSinceDamage >= range;
-          }
-
-          if (inRange && this.damageCooldown <= 0) {
+          if (this.scoreManager.damageTaken <= 0 && this.damageCooldown <= 0) {
             this.scoreManager.addBonusScore(evt.points || 100, 'riskBonus');
             this.showFloatingText(carX, this.carPhysics.car.y - 80,
               '🏆 ' + (evt.name || '险道奖励') + ': +' + (evt.points || 100), 0xff9800);
-            this.createBonusEffect(carX, 0xff9800);
-          } else if (!inRange) {
-            this.showFloatingText(carX, this.carPhysics.car.y - 80,
-              '⚠️ ' + (evt.name || '奖励') + ' 未达成', 0x9e9e9e);
-          }
-        }
-        break;
-
-      case 'secretBonus':
-        var unlocked = this.checkSecretBonusCondition(evt, carX);
-        if (unlocked) {
-          this.scoreManager.addBonusScore(evt.points || 500, 'explorationBonus');
-          this.showFloatingText(carX, this.carPhysics.car.y - 90,
-            '💎 ' + (evt.name || '秘境宝藏') + ': +' + (evt.points || 500), 0x9c27b0);
-          this.createBonusEffect(carX, 0x9c27b0);
-
-          if (evt.unlockCar) {
-            this.unlockSponsorCar(evt.unlockCar, evt.name);
           }
         }
         break;
@@ -1711,162 +1668,6 @@
         onComplete: (function(s) { return function() { s.destroy(); }; })(spark)
       });
     }
-  };
-
-  proto.createBonusEffect = function(x, color) {
-    var y = this.carPhysics.car.y;
-    for (var i = 0; i < 15; i++) {
-      var angle = (Math.PI * 2 * i) / 15;
-      var dist = 30 + Math.random() * 20;
-      var px = x + Math.cos(angle) * dist;
-      var py = y + Math.sin(angle) * dist - 30;
-      var particle = this.add.circle(px, py, 3 + Math.random() * 3, color);
-      particle.setDepth(16);
-      particle.setAlpha(0.9);
-
-      var targetDist = 60 + Math.random() * 40;
-      this.tweens.add({
-        targets: particle,
-        x: x + Math.cos(angle) * targetDist,
-        y: y + Math.sin(angle) * targetDist - 50,
-        alpha: 0,
-        scale: 0.4,
-        duration: 600 + Math.random() * 300,
-        ease: 'Power2',
-        onComplete: (function(p) { return function() { p.destroy(); }; })(particle)
-      });
-    }
-
-    var ring = this.add.graphics();
-    ring.lineStyle(3, color, 0.8);
-    ring.strokeCircle(x, y - 30, 10);
-    ring.setDepth(17);
-    this.tweens.add({
-      targets: ring,
-      scale: 5,
-      alpha: 0,
-      duration: 500,
-      ease: 'Quad.easeOut',
-      onComplete: function() { ring.destroy(); }
-    });
-  };
-
-  proto.checkSecretBonusCondition = function(evt, carX) {
-    if (!evt.condition) return true;
-
-    var stats = this.scoreManager.getDetailedStats();
-    var cond = evt.condition;
-
-    switch (cond.type) {
-      case 'noDamage':
-        var range = cond.range || 500;
-        if (this.lastDamageX > 0 && carX - this.lastDamageX < range) {
-          return false;
-        }
-        return this.damageCooldown <= 0;
-
-      case 'combo':
-        return this.scoreManager.comboCount >= (cond.value || 5);
-
-      case 'speed':
-        return this.carPhysics.getSpeed() >= (cond.value || 400);
-
-      case 'score':
-        return this.scoreManager.score >= (cond.value || 5000);
-
-      default:
-        return true;
-    }
-  };
-
-  proto.unlockSponsorCar = function(carId, bonusName) {
-    var cars = MountainRacer.CAR_CONFIGS || {};
-    if (!cars[carId]) return;
-
-    var unlocked = [];
-    try {
-      var saved = localStorage.getItem('mountain_racer_unlocked_cars');
-      unlocked = saved ? JSON.parse(saved) : ['default'];
-    } catch (e) {
-      unlocked = ['default'];
-    }
-
-    if (unlocked.indexOf(carId) === -1) {
-      unlocked.push(carId);
-      try {
-        localStorage.setItem('mountain_racer_unlocked_cars', JSON.stringify(unlocked));
-      } catch (e) {}
-
-      var carInfo = cars[carId];
-      this.showFloatingText(this.carPhysics.car.x, this.carPhysics.car.y - 120,
-        '🎁 解锁赞助赛车: ' + carInfo.name, 0xffd700);
-
-      var self = this;
-      setTimeout(function() {
-        if (self.scene.isActive()) {
-          self.showCarUnlockNotification(carInfo);
-        }
-      }, 800);
-    }
-  };
-
-  proto.showCarUnlockNotification = function(carInfo) {
-    var width = this.scale.width;
-    var height = this.scale.height;
-
-    var container = this.add.container(width / 2, height / 2 - 50);
-    container.setScrollFactor(0);
-    container.setDepth(2001);
-
-    var bg = this.add.graphics();
-    bg.fillStyle(0xffffff, 0.98);
-    bg.fillRoundedRect(-160, -60, 320, 120, 16);
-    bg.lineStyle(3, 0xffd700, 1);
-    bg.strokeRoundedRect(-160, -60, 320, 120, 16);
-    container.add(bg);
-
-    var icon = this.add.text(-120, 0, '🏎️', { fontSize: '36px' }).setOrigin(0.5);
-    container.add(icon);
-
-    var title = this.add.text(-10, -20, '🎁 新赛车解锁!', {
-      fontSize: '16px',
-      fontWeight: 'bold',
-      color: '#ff6b35'
-    }).setOrigin(0, 0.5);
-    container.add(title);
-
-    var name = this.add.text(-10, 5, carInfo.name, {
-      fontSize: '18px',
-      fontWeight: 'bold',
-      color: '#333333'
-    }).setOrigin(0, 0.5);
-    container.add(name);
-
-    var desc = this.add.text(-10, 28, carInfo.description || '赞助限定赛车', {
-      fontSize: '12px',
-      color: '#888888'
-    }).setOrigin(0, 0.5);
-    container.add(desc);
-
-    var self = this;
-    this.tweens.add({
-      targets: container,
-      y: height / 2 - 100,
-      alpha: { from: 0, to: 1 },
-      scale: { from: 0.5, to: 1 },
-      duration: 400,
-      ease: 'Back.easeOut'
-    });
-
-    this.tweens.add({
-      targets: container,
-      alpha: 0,
-      y: height / 2 - 130,
-      duration: 500,
-      delay: 2500,
-      ease: 'Power2',
-      onComplete: function() { container.destroy(); }
-    });
   };
 
   proto.checkHiddenUnlocks = function() {
@@ -2016,8 +1817,6 @@
         this.unlockAchievement(ach);
       }
     }
-
-    this.checkScoreCarUnlocks();
   };
 
   proto.unlockAchievement = function(achievement) {
@@ -2034,106 +1833,6 @@
         localStorage.setItem(key, JSON.stringify(data));
       }
     } catch (e) {}
-
-    this.checkAchievementCarUnlocks();
-  };
-
-  proto.checkAchievementCarUnlocks = function() {
-    var achievements = this.unlockedAchievements || [];
-    var unlockedCars = MountainRacer.getUnlockedCars();
-    var carConfigs = MountainRacer.CAR_CONFIGS || {};
-    var carIds = Object.keys(carConfigs);
-    var newlyUnlocked = [];
-
-    for (var i = 0; i < carIds.length; i++) {
-      var carId = carIds[i];
-      var carCfg = carConfigs[carId];
-      if (!carCfg.unlockCondition || unlockedCars.indexOf(carId) !== -1) continue;
-
-      var cond = carCfg.unlockCondition;
-      var shouldUnlock = false;
-
-      if (cond.type === 'achievement' && cond.id) {
-        if (achievements.indexOf(cond.id) !== -1) {
-          shouldUnlock = true;
-        }
-      }
-
-      if (shouldUnlock) {
-        unlockedCars.push(carId);
-        newlyUnlocked.push(carId);
-      }
-    }
-
-    if (newlyUnlocked.length > 0) {
-      MountainRacer.saveUnlockedCars(unlockedCars);
-
-      for (var j = 0; j < newlyUnlocked.length; j++) {
-        var newCar = carConfigs[newlyUnlocked[j]];
-        if (newCar) {
-          this.showFloatingText(this.carPhysics.car.x, this.carPhysics.car.y - 140 - j * 40,
-            '🎁 解锁赛车: ' + newCar.name, 0xffd700);
-
-          var self = this;
-          (function(carInfo) {
-            setTimeout(function() {
-              if (self.scene.isActive()) {
-                self.showCarUnlockNotification(carInfo);
-              }
-            }, 1000 + j * 600);
-          })(newCar);
-        }
-      }
-    }
-  };
-
-  proto.checkScoreCarUnlocks = function() {
-    var currentScore = this.scoreManager.score;
-    var unlockedCars = MountainRacer.getUnlockedCars();
-    var carConfigs = MountainRacer.CAR_CONFIGS || {};
-    var carIds = Object.keys(carConfigs);
-    var newlyUnlocked = [];
-
-    for (var i = 0; i < carIds.length; i++) {
-      var carId = carIds[i];
-      var carCfg = carConfigs[carId];
-      if (!carCfg.unlockCondition || unlockedCars.indexOf(carId) !== -1) continue;
-
-      var cond = carCfg.unlockCondition;
-      var shouldUnlock = false;
-
-      if (cond.type === 'score' && cond.value) {
-        if (currentScore >= cond.value) {
-          shouldUnlock = true;
-        }
-      }
-
-      if (shouldUnlock) {
-        unlockedCars.push(carId);
-        newlyUnlocked.push(carId);
-      }
-    }
-
-    if (newlyUnlocked.length > 0) {
-      MountainRacer.saveUnlockedCars(unlockedCars);
-
-      for (var j = 0; j < newlyUnlocked.length; j++) {
-        var newCar = carConfigs[newlyUnlocked[j]];
-        if (newCar) {
-          this.showFloatingText(this.carPhysics.car.x, this.carPhysics.car.y - 120 - j * 35,
-            '🎁 解锁赛车: ' + newCar.name, 0xffd700);
-
-          var self = this;
-          (function(carInfo) {
-            setTimeout(function() {
-              if (self.scene.isActive()) {
-                self.showCarUnlockNotification(carInfo);
-              }
-            }, 800 + j * 500);
-          })(newCar);
-        }
-      }
-    }
   };
 
   proto.showAchievementNotification = function(achievement) {

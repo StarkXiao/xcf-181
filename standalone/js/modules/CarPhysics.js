@@ -1,123 +1,17 @@
 (function() {
   var MountainRacer = window.MountainRacer || {};
 
-  MountainRacer.CAR_CONFIGS = {
-    default: {
-      id: 'default',
-      name: '烈焰红',
-      description: '经典赛车，性能均衡',
-      bodyColor: 0xff4500,
-      bodyHighlight: 0xff6347,
-      windowColor: 0x87ceeb,
-      wheelColor: 0x1a1a1a,
-      maxSpeed: 600,
-      acceleration: 250,
-      brakeAcceleration: 400,
-      unlocked: true,
-      unlockCondition: null
-    },
-    sportBlue: {
-      id: 'sportBlue',
-      name: '疾风蓝',
-      description: '速度型赛车，加速迅猛',
-      bodyColor: 0x1e90ff,
-      bodyHighlight: 0x4169e1,
-      windowColor: 0x87ceeb,
-      wheelColor: 0x0a0a0a,
-      maxSpeed: 680,
-      acceleration: 300,
-      brakeAcceleration: 450,
-      unlocked: false,
-      unlockCondition: { type: 'achievement', id: 'speed_demon_lv1' }
-    },
-    goldRacer: {
-      id: 'goldRacer',
-      name: '黄金战车',
-      description: '赞助限定，稀有典藏',
-      bodyColor: 0xffd700,
-      bodyHighlight: 0xffec8b,
-      windowColor: 0x87ceeb,
-      wheelColor: 0x8b6914,
-      maxSpeed: 650,
-      acceleration: 280,
-      brakeAcceleration: 420,
-      unlocked: false,
-      unlockCondition: { type: 'secretBonus', level: 1 }
-    },
-    shadow: {
-      id: 'shadow',
-      name: '暗影刺客',
-      description: '暗黑风格，极速传说',
-      bodyColor: 0x2c2c2c,
-      bodyHighlight: 0x4a4a4a,
-      windowColor: 0x4a4a4a,
-      wheelColor: 0x0d0d0d,
-      maxSpeed: 720,
-      acceleration: 320,
-      brakeAcceleration: 380,
-      unlocked: false,
-      unlockCondition: { type: 'achievement', id: 'perfect_runner' }
-    },
-    neon: {
-      id: 'neon',
-      name: '霓虹流光',
-      description: '传说级赞助赛车',
-      bodyColor: 0xff00ff,
-      bodyHighlight: 0xff66ff,
-      windowColor: 0x00ffff,
-      wheelColor: 0x1a0033,
-      maxSpeed: 700,
-      acceleration: 290,
-      brakeAcceleration: 430,
-      unlocked: false,
-      unlockCondition: { type: 'score', value: 20000 }
-    }
-  };
-
-  MountainRacer.getUnlockedCars = function() {
-    try {
-      var saved = localStorage.getItem('mountain_racer_unlocked_cars');
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (e) {}
-    return ['default'];
-  };
-
-  MountainRacer.saveUnlockedCars = function(cars) {
-    try {
-      localStorage.setItem('mountain_racer_unlocked_cars', JSON.stringify(cars));
-    } catch (e) {}
-  };
-
-  MountainRacer.getSelectedCar = function() {
-    try {
-      var saved = localStorage.getItem('mountain_racer_selected_car');
-      if (saved) return saved;
-    } catch (e) {}
-    return 'default';
-  };
-
-  MountainRacer.setSelectedCar = function(carId) {
-    try {
-      localStorage.setItem('mountain_racer_selected_car', carId);
-    } catch (e) {}
-  };
-
-  MountainRacer.CarPhysics = function(scene, carId) {
+  MountainRacer.CarPhysics = function(scene) {
     this.scene = scene;
-    this.carId = carId || 'default';
-    this.carConfig = MountainRacer.CAR_CONFIGS[this.carId] || MountainRacer.CAR_CONFIGS.default;
-
     this.car = null;
     this.wheelFL = null;
     this.wheelFR = null;
     this.wheelBL = null;
     this.wheelBR = null;
 
-    this.maxSpeed = this.carConfig.maxSpeed || 600;
-    this.acceleration = this.carConfig.acceleration || 250;
-    this.brakeAcceleration = this.carConfig.brakeAcceleration || 400;
+    this.maxSpeed = 600;
+    this.acceleration = 250;
+    this.brakeAcceleration = 400;
     this.friction = 0.98;
     this.airFriction = 0.995;
     this.gravity = 900;
@@ -153,35 +47,28 @@
     this.car = this.scene.add.container(x, y);
     this.car.setDepth(50);
 
-    var cfg = this.carConfig;
     var bodyGraphics = this.scene.add.graphics();
-    bodyGraphics.fillStyle(cfg.bodyColor, 1);
+    bodyGraphics.fillStyle(0xff4500, 1);
     bodyGraphics.fillRoundedRect(-30, -28, 60, 22, 4);
 
-    bodyGraphics.fillStyle(cfg.bodyHighlight, 1);
+    bodyGraphics.fillStyle(0xff6347, 1);
     bodyGraphics.fillRoundedRect(-12, -40, 28, 14, 3);
 
-    bodyGraphics.fillStyle(cfg.windowColor, 0.8);
+    bodyGraphics.fillStyle(0x87ceeb, 0.8);
     bodyGraphics.fillRoundedRect(-8, -38, 22, 10, 2);
 
-    var darkBodyColor = Phaser.Display.Color.IntegerToColor(cfg.bodyColor);
-    darkBodyColor.darken(30);
-    bodyGraphics.lineStyle(2, darkBodyColor.color, 1);
+    bodyGraphics.lineStyle(2, 0x8b0000, 1);
     bodyGraphics.strokeRoundedRect(-30, -28, 60, 22, 4);
 
     bodyGraphics.fillStyle(0xffff00, 1);
     bodyGraphics.fillCircle(26, -20, 3);
     bodyGraphics.fillCircle(26, -12, 3);
 
-    var tailColor = Phaser.Display.Color.IntegerToColor(cfg.bodyColor);
-    tailColor.darken(40);
-    bodyGraphics.fillStyle(tailColor.color, 0.9);
+    bodyGraphics.fillStyle(0xff0000, 0.9);
     bodyGraphics.fillCircle(-26, -20, 3);
     bodyGraphics.fillCircle(-26, -12, 3);
 
-    var intakeColor = Phaser.Display.Color.IntegerToColor(cfg.bodyColor);
-    intakeColor.darken(20);
-    bodyGraphics.fillStyle(intakeColor.color, 1);
+    bodyGraphics.fillStyle(0x222222, 1);
     bodyGraphics.fillRoundedRect(-8, -18, 16, 10, 2);
 
     this.car.add(bodyGraphics);
@@ -207,24 +94,17 @@
 
   proto.createWheel = function(offsetX, offsetY) {
     var graphics = this.scene.add.graphics();
-    var wheelColor = this.carConfig.wheelColor || 0x1a1a1a;
 
-    graphics.fillStyle(wheelColor, 1);
+    graphics.fillStyle(0x1a1a1a, 1);
     graphics.fillCircle(0, 0, this.wheelRadius);
 
-    var rimColor = Phaser.Display.Color.IntegerToColor(wheelColor);
-    rimColor.lighten(30);
-    graphics.fillStyle(rimColor.color, 1);
+    graphics.fillStyle(0x444444, 1);
     graphics.fillCircle(0, 0, this.wheelRadius - 4);
 
-    var hubColor = Phaser.Display.Color.IntegerToColor(wheelColor);
-    hubColor.lighten(50);
-    graphics.fillStyle(hubColor.color, 1);
+    graphics.fillStyle(0x888888, 1);
     graphics.fillCircle(0, 0, 3);
 
-    var spokeColor = Phaser.Display.Color.IntegerToColor(wheelColor);
-    spokeColor.lighten(20);
-    graphics.lineStyle(1.5, spokeColor.color, 1);
+    graphics.lineStyle(1.5, 0x333333, 1);
     for (var i = 0; i < 4; i++) {
       var a = (i / 4) * Math.PI * 2;
       graphics.beginPath();
