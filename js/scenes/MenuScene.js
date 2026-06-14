@@ -17,6 +17,7 @@
     this.createBackground(width, height);
     this.createTitle(width, height);
     this.createLevelCards(width, height);
+    this.createCarSelection(width, height);
     this.createInstructions(width, height);
     this.createControlsHint(width, height);
   };
@@ -245,10 +246,266 @@
     }
   };
 
-  proto.createInstructions = function(width, height) {
-    var panelY = 445;
+  proto.createCarSelection = function(width, height) {
+    var panelY = 375;
     var panelWidth = 680;
     var panelHeight = 80;
+
+    var gfx = this.add.graphics();
+    gfx.fillStyle(0x000000, 0.45);
+    gfx.fillRoundedRect(width / 2 - panelWidth / 2, panelY - panelHeight / 2, panelWidth, panelHeight, 12);
+    gfx.lineStyle(2, 0xffffff, 0.3);
+    gfx.strokeRoundedRect(width / 2 - panelWidth / 2, panelY - panelHeight / 2, panelWidth, panelHeight, 12);
+
+    this.add.text(width / 2, panelY - 25, '🏎️ 选择赛车', {
+      fontSize: '15px',
+      fontWeight: 'bold',
+      color: '#ffd700'
+    }).setOrigin(0.5);
+
+    var carIds = Object.keys(MountainRacer.CAR_CONFIGS);
+    var unlockedCars = MountainRacer.getUnlockedCars();
+    var selectedCar = MountainRacer.getSelectedCar();
+    var carCount = carIds.length;
+
+    var carCardWidth = 85;
+    var carCardHeight = 45;
+    var carSpacing = 12;
+    var totalWidth = carCount * carCardWidth + (carCount - 1) * carSpacing;
+    var startX = width / 2 - totalWidth / 2 + carCardWidth / 2;
+
+    this.carCards = [];
+    this.selectedCarId = selectedCar;
+
+    for (var i = 0; i < carCount; i++) {
+      var carId = carIds[i];
+      var carCfg = MountainRacer.CAR_CONFIGS[carId];
+      var carX = startX + i * (carCardWidth + carSpacing);
+      var carY = panelY + 12;
+
+      var isUnlocked = unlockedCars.indexOf(carId) !== -1;
+      var isSelected = carId === selectedCar;
+
+      var cardContainer = this.add.container(carX, carY);
+      cardContainer.setSize(carCardWidth, carCardHeight);
+      cardContainer.setData('carId', carId);
+      cardContainer.setData('unlocked', isUnlocked);
+
+      var cardGfx = this.add.graphics();
+
+      if (isSelected) {
+        cardGfx.fillStyle(0xffd700, 0.25);
+        cardGfx.fillRoundedRect(-carCardWidth / 2, -carCardHeight / 2, carCardWidth, carCardHeight, 8);
+        cardGfx.lineStyle(2, 0xffd700, 1);
+        cardGfx.strokeRoundedRect(-carCardWidth / 2, -carCardHeight / 2, carCardWidth, carCardHeight, 8);
+      } else {
+        cardGfx.fillStyle(0xffffff, 0.1);
+        cardGfx.fillRoundedRect(-carCardWidth / 2, -carCardHeight / 2, carCardWidth, carCardHeight, 8);
+        cardGfx.lineStyle(1.5, 0xffffff, 0.3);
+        cardGfx.strokeRoundedRect(-carCardWidth / 2, -carCardHeight / 2, carCardWidth, carCardHeight, 8);
+      }
+
+      var carDisplay = this.createMiniCar(carCfg.bodyColor, carCfg.bodyHighlight, carCfg.windowColor);
+      carDisplay.setScale(0.55);
+      carDisplay.y = -2;
+
+      var nameText = this.add.text(0, carCardHeight / 2 - 12, carCfg.name, {
+        fontSize: '11px',
+        fontWeight: 'bold',
+        color: isUnlocked ? '#ffffff' : '#888888'
+      }).setOrigin(0.5);
+
+      cardContainer.add([cardGfx, carDisplay, nameText]);
+
+      if (!isUnlocked) {
+        var lockGfx = this.add.graphics();
+        lockGfx.fillStyle(0x000000, 0.65);
+        lockGfx.fillRoundedRect(-carCardWidth / 2, -carCardHeight / 2, carCardWidth, carCardHeight, 8);
+        var lockText = this.add.text(0, -2, '🔒', {
+          fontSize: '20px'
+        }).setOrigin(0.5);
+        var hintText = this.add.text(0, carCardHeight / 2 - 12, this.getCarUnlockHint(carCfg), {
+          fontSize: '9px',
+          color: '#ff9800'
+        }).setOrigin(0.5);
+        cardContainer.add([lockGfx, lockText, hintText]);
+      }
+
+      cardContainer.setInteractive(
+        new Phaser.Geom.Rectangle(-carCardWidth / 2, -carCardHeight / 2, carCardWidth, carCardHeight),
+        Phaser.Geom.Rectangle.Contains
+      );
+
+      var self = this;
+      cardContainer.on('pointerover', function() {
+        if (this.getData('unlocked')) {
+          self.tweens.add({
+            targets: this,
+            scale: 1.08,
+            duration: 120,
+            ease: 'Power2'
+          });
+        }
+      });
+
+      cardContainer.on('pointerout', function() {
+        self.tweens.add({
+          targets: this,
+          scale: 1.0,
+          duration: 120,
+          ease: 'Power2'
+        });
+      });
+
+      cardContainer.on('pointerdown', (function(cid, unlocked) {
+        return function() {
+          if (unlocked) {
+            self.selectCar(cid);
+          } else {
+            self.showCarUnlockHint(cid);
+          }
+        };
+      })(carId, isUnlocked));
+
+      this.carCards.push(cardContainer);
+    }
+  };
+
+  proto.createMiniCar = function(bodyColor, bodyHighlight, windowColor) {
+    var gfx = this.add.graphics();
+
+    gfx.fillStyle(bodyColor, 1);
+    gfx.fillRoundedRect(-30, -20, 60, 18, 3);
+
+    gfx.fillStyle(bodyHighlight, 1);
+    gfx.fillRoundedRect(-10, -32, 24, 12, 2);
+
+    gfx.fillStyle(windowColor, 0.8);
+    gfx.fillRoundedRect(-6, -30, 18, 8, 2);
+
+    gfx.fillStyle(0x1a1a1a, 1);
+    gfx.fillCircle(-18, 6, 8);
+    gfx.fillCircle(18, 6, 8);
+
+    gfx.fillStyle(0x555555, 1);
+    gfx.fillCircle(-18, 6, 4);
+    gfx.fillCircle(18, 6, 4);
+
+    return gfx;
+  };
+
+  proto.getCarUnlockHint = function(carCfg) {
+    if (!carCfg.unlockCondition) return '默认赛车';
+
+    var cond = carCfg.unlockCondition;
+    switch (cond.type) {
+      case 'achievement':
+        return '🏆 成就解锁';
+      case 'secretBonus':
+        return '💎 秘境解锁';
+      case 'score':
+        return '🏆 ' + (cond.value / 1000) + 'k分解锁';
+      default:
+        return '🔒 未解锁';
+    }
+  };
+
+  proto.selectCar = function(carId) {
+    if (this.selectedCarId === carId) return;
+
+    MountainRacer.setSelectedCar(carId);
+    this.selectedCarId = carId;
+
+    var unlockedCars = MountainRacer.getUnlockedCars();
+
+    for (var i = 0; i < this.carCards.length; i++) {
+      var card = this.carCards[i];
+      var cid = card.getData('carId');
+      var isSelected = cid === carId;
+      var cardGfx = card.first;
+
+      if (cardGfx && cardGfx.clear) {
+        cardGfx.clear();
+        var w = card.width || 85;
+        var h = card.height || 45;
+
+        if (isSelected) {
+          cardGfx.fillStyle(0xffd700, 0.25);
+          cardGfx.fillRoundedRect(-w / 2, -h / 2, w, h, 8);
+          cardGfx.lineStyle(2, 0xffd700, 1);
+          cardGfx.strokeRoundedRect(-w / 2, -h / 2, w, h, 8);
+        } else {
+          cardGfx.fillStyle(0xffffff, 0.1);
+          cardGfx.fillRoundedRect(-w / 2, -h / 2, w, h, 8);
+          cardGfx.lineStyle(1.5, 0xffffff, 0.3);
+          cardGfx.strokeRoundedRect(-w / 2, -h / 2, w, h, 8);
+        }
+      }
+    }
+
+    if (this.sound && this.sound.play) {
+      try {
+        this.sound.play('select', { volume: 0.3 });
+      } catch (e) {}
+    }
+  };
+
+  proto.showCarUnlockHint = function(carId) {
+    var carCfg = MountainRacer.CAR_CONFIGS[carId];
+    if (!carCfg || !carCfg.unlockCondition) return;
+
+    var cond = carCfg.unlockCondition;
+    var hint = '';
+
+    switch (cond.type) {
+      case 'achievement':
+        hint = '完成成就 "' + (cond.name || cond.id) + '" 后解锁';
+        break;
+      case 'secretBonus':
+        hint = '在第 ' + cond.level + ' 关找到秘境宝藏后解锁';
+        break;
+      case 'score':
+        hint = '单局得分达到 ' + cond.value + ' 后解锁';
+        break;
+      default:
+        hint = '达成特定条件后解锁';
+    }
+
+    var floatText = this.add.text(
+      this.scale.width / 2,
+      440,
+      '🔒 ' + carCfg.name + ': ' + hint,
+      {
+        fontSize: '13px',
+        color: '#ff9800',
+        backgroundColor: '#000000',
+        padding: { left: 10, right: 10, top: 6, bottom: 6 }
+      }
+    ).setOrigin(0.5).setDepth(100);
+
+    this.tweens.add({
+      targets: floatText,
+      alpha: { from: 0, to: 1 },
+      y: 435,
+      duration: 200,
+      ease: 'Power2'
+    });
+
+    this.tweens.add({
+      targets: floatText,
+      alpha: 0,
+      y: 425,
+      duration: 300,
+      delay: 1500,
+      ease: 'Power2',
+      onComplete: function() { floatText.destroy(); }
+    });
+  };
+
+  proto.createInstructions = function(width, height) {
+    var panelY = 505;
+    var panelWidth = 680;
+    var panelHeight = 60;
 
     var gfx = this.add.graphics();
     gfx.fillStyle(0x000000, 0.45);
@@ -257,16 +514,16 @@
     gfx.lineStyle(2, 0xffffff, 0.3);
     gfx.strokeRoundedRect(width / 2 - panelWidth / 2, panelY - panelHeight / 2, panelWidth, panelHeight, 12);
 
-    this.add.text(width / 2, panelY - 25, '🎮 操作说明', {
-      fontSize: '15px',
+    this.add.text(width / 2, panelY - 15, '🎮 操作说明', {
+      fontSize: '14px',
       fontWeight: 'bold',
       color: '#ffd700'
     }).setOrigin(0.5);
 
-    this.add.text(width / 2, panelY + 10,
+    this.add.text(width / 2, panelY + 12,
       '加速: W / ↑ / 空格   减速: S / ↓   空中平衡: A/D 或 ←/→',
       {
-        fontSize: '14px',
+        fontSize: '13px',
         color: '#ffffff'
       }).setOrigin(0.5);
   };
