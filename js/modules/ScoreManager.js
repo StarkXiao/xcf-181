@@ -71,6 +71,25 @@
     };
 
     this.branchScoreBreakdown = {};
+
+    this.midGameSettings = {
+      difficulty: 'normal',
+      sfxEnabled: true,
+      controlMode: 'keyboard',
+      cameraShake: true,
+      showFPS: false
+    };
+
+    this.runHistory = [];
+    this.highScoreThresholds = [0.8, 0.9, 0.95, 1.0, 1.05, 1.1];
+    this.highScoreBreakthrough = null;
+    this.segmentScores = [];
+    this.lastSegmentX = 0;
+    this.segmentInterval = 500;
+
+    this.previousBestStats = null;
+    this.scoreImprovements = {};
+    this.loadPreviousBest();
   };
 
   var proto = MountainRacer.ScoreManager.prototype;
@@ -97,6 +116,18 @@
   proto.addDistanceScore = function(currentX) {
     var delta = Math.max(0, currentX - this.lastDistanceX);
     this.distance += delta;
+
+    if (currentX - this.lastSegmentX >= this.segmentInterval) {
+      this.segmentScores.push({
+        x: Math.floor(currentX),
+        score: this.score,
+        distance: Math.floor(this.distance),
+        branch: this.currentBranch,
+        combo: this.comboCount,
+        time: Date.now() - this.startTime
+      });
+      this.lastSegmentX = currentX;
+    }
 
     if (this.comboCount > 0) {
       this.damageFreeDistance += delta;
@@ -288,6 +319,12 @@
     this.incrementCombo('obstaclePass', points);
   };
 
+  proto.registerDamageFreeSegment = function() {
+    this.damageFreeSegments++;
+    var points = this.damageFreeSegments * 80;
+    this.incrementCombo('damageFree', points);
+  };
+
   proto.getComboInfo = function() {
     return {
       comboCount: this.comboCount,
@@ -441,6 +478,9 @@
 
       this.calculateBranchScoreBreakdown();
 
+      this.calculateScoreImprovements();
+      this.saveBestStats();
+
       this.saveHighScore();
       this.saveBranchProgress();
 
@@ -506,7 +546,9 @@
       mergeCount: this.mergeCount,
       hiddenBranchesFound: this.hiddenBranchesFound,
       totalWeightedMultiplier: this.totalWeightedMultiplier,
-      comboInfo: this.getComboInfo()
+      comboInfo: this.getComboInfo(),
+      segmentScores: this.segmentScores,
+      midGameSettings: this.midGameSettings
     };
   };
 
@@ -584,6 +626,349 @@
     } catch (e) {
       return [1];
     }
+  };
+
+  proto.loadPreviousBest = function() {
+    try {
+      var key = 'mountain_racer_best_stats_' + this.level;
+      var saved = localStorage.getItem(key);
+      if (saved) {
+        this.previousBestStats = JSON.parse(saved);
+      }
+    } catch (e) {}
+  };
+
+  proto.saveBestStats = function() {
+    try {
+      var key = 'mountain_racer_best_stats_' + this.level;
+      var current = this.getDetailedStats();
+      var previous = this.previousBestStats;
+
+      if (!previous || current.totalScore > previous.totalScore) {
+        localStorage.setItem(key, JSON.stringify(current));
+      }
+
+      var historyKey = 'mountain_racer_run_history_' + this.level;
+      var history = [];
+      try {
+        var savedHistory = localStorage.getItem(historyKey);
+        if (savedHistory) {
+          history = JSON.parse(savedHistory);
+        }
+      } catch (e) {}
+
+      var runRecord = {
+        score: current.totalScore,
+        time: current.time,
+        distance: current.distance,
+        health: current.health,
+        perfectRun: current.perfectRun,
+        maxSpeed: current.maxSpeed,
+        maxCombo: current.comboInfo ? current.comboInfo.maxCombo : 0,
+        branches: Object.keys(current.branches || {}).length,
+        timestamp: Date.now(),
+        win: this.isComplete
+      };
+
+      history.unshift(runRecord);
+      if (history.length > 10) history = history.slice(0, 10);
+      localStorage.setItem(historyKey, JSON.stringify(history));
+    } catch (e) {}
+  };
+
+  proto.getRunHistory = function() {
+    try {
+      var key = 'mountain_racer_run_history_' + this.level;
+      var saved = localStorage.getItem(key);
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  };
+
+  proto.calculateScoreImprovements = function() {
+    if (!this.previousBestStats) {
+      this.scoreImprovements = { isNewBest: true, improvements: [], newRecords: [] };
+      return this.scoreImprovements;
+    }
+
+    var current = this.getDetailedStats();
+    var prev = this.previousBestStats;
+    var improvements = [];
+    var newRecords = [];
+
+    var scoreDiff = current.totalScore - prev.totalScore;
+    if (scoreDiff > 0) {
+      improvements.push({
+        label: '总分',
+        current: current.totalScore,
+        previous: prev.totalScore,
+        diff: scoreDiff,
+        percent: ((scoreDiff / prev.totalScore) * 100).toFixed(1),
+        icon: '🏆',
+        major: true
+      });
+      newRecords.push('总分');
+    }
+
+    var timeDiff = prev.time - current.time;
+    if (this.isComplete && timeDiff > 0.1) {
+      improvements.push({
+        label: '用时',
+        current: current.time,
+        previous: prev.time,
+        diff: timeDiff,
+        percent: ((timeDiff / prev.time) * 100).toFixed(1),
+        icon: '⏱',
+        faster: true
+      });
+      newRecords.push('用时');
+    }
+
+    var healthDiff = current.health - prev.health;
+    if (healthDiff > 0) {
+      improvements.push({
+        label: '剩余生命',
+        current: current.health,
+        previous: prev.health,
+        diff: healthDiff,
+        percent: ((healthDiff / Math.max(1, prev.health)) * 100).toFixed(1),
+        icon: '❤️'
+      });
+    }
+
+    var speedDiff = current.maxSpeed - prev.maxSpeed;
+    if (speedDiff > 0) {
+      improvements.push({
+        label: '最高时速',
+        current: current.maxSpeed,
+        previous: prev.maxSpeed,
+        diff: speedDiff,
+        percent: ((speedDiff / Math.max(1, prev.maxSpeed)) * 100).toFixed(1),
+        icon: '🚗'
+      });
+    }
+
+    var currentCombo = current.comboInfo ? current.comboInfo.maxCombo : 0;
+    var prevCombo = prev.comboInfo ? prev.comboInfo.maxCombo : 0;
+    var comboDiff = currentCombo - prevCombo;
+    if (comboDiff > 0) {
+      improvements.push({
+        label: '最大连击',
+        current: currentCombo,
+        previous: prevCombo,
+        diff: comboDiff,
+        percent: ((comboDiff / Math.max(1, prevCombo)) * 100).toFixed(1),
+        icon: '🔥'
+      });
+      newRecords.push('最大连击');
+    }
+
+    var currentBranches = Object.keys(current.branches || {}).length;
+    var prevBranches = Object.keys(prev.branches || {}).length;
+    var branchDiff = currentBranches - prevBranches;
+    if (branchDiff > 0) {
+      improvements.push({
+        label: '探索路线',
+        current: currentBranches,
+        previous: prevBranches,
+        diff: branchDiff,
+        percent: ((branchDiff / Math.max(1, prevBranches)) * 100).toFixed(1),
+        icon: '🗺️'
+      });
+      newRecords.push('探索路线');
+    }
+
+    if (current.perfectRun && !prev.perfectRun) {
+      improvements.push({
+        label: '完美通关',
+        current: '✅',
+        previous: '❌',
+        diff: 1,
+        percent: '100',
+        icon: '💯',
+        major: true,
+        isBoolean: true
+      });
+      newRecords.push('完美通关');
+    }
+
+    var currentObstacles = current.comboInfo ? current.comboInfo.totalObstaclePasses : 0;
+    var prevObstacles = prev.comboInfo ? prev.comboInfo.totalObstaclePasses : 0;
+    var obstacleDiff = currentObstacles - prevObstacles;
+    if (obstacleDiff > 0) {
+      improvements.push({
+        label: '连续过障',
+        current: currentObstacles,
+        previous: prevObstacles,
+        diff: obstacleDiff,
+        percent: ((obstacleDiff / Math.max(1, prevObstacles)) * 100).toFixed(1),
+        icon: '🎯'
+      });
+    }
+
+    this.scoreImprovements = {
+      isNewBest: scoreDiff > 0 || !this.previousBestStats,
+      improvements: improvements,
+      newRecords: newRecords,
+      previousScore: prev ? prev.totalScore : 0
+    };
+
+    return this.scoreImprovements;
+  };
+
+  proto.getPerformanceGrade = function() {
+    var stats = this.getDetailedStats();
+    var grade = 'C';
+    var score = stats.totalScore;
+    var criteria = {
+      S: { score: 15000, perfect: true, minBranches: 3 },
+      A: { score: 10000, minBranches: 2 },
+      B: { score: 6000 },
+      C: { score: 0 }
+    };
+
+    if (stats.perfectRun && score >= criteria.S.score &&
+        Object.keys(stats.branches || {}).length >= criteria.S.minBranches) {
+      grade = 'S';
+    } else if (score >= criteria.A.score &&
+               Object.keys(stats.branches || {}).length >= criteria.A.minBranches) {
+      grade = 'A';
+    } else if (score >= criteria.B.score) {
+      grade = 'B';
+    }
+
+    var gradeInfo = {
+      'S': { label: 'S 级', color: '#ffd700', desc: '传奇车手！完美表现！', stars: 5 },
+      'A': { label: 'A 级', color: '#ff6b35', desc: '优秀表现！继续保持！', stars: 4 },
+      'B': { label: 'B 级', color: '#4caf50', desc: '不错的成绩！还有提升空间', stars: 3 },
+      'C': { label: 'C 级', color: '#2196f3', desc: '继续努力，你可以做得更好！', stars: 2 }
+    };
+
+    var info = gradeInfo[grade];
+
+    return {
+      grade: grade,
+      label: info.label,
+      color: info.color,
+      desc: info.desc,
+      stars: info.stars,
+      scoreBreakdown: this.getScoreDimensionBreakdown()
+    };
+  };
+
+  proto.getScoreDimensionBreakdown = function() {
+    var stats = this.getDetailedStats();
+    var bonus = stats.bonusScores || {};
+
+    var totalScore = Math.max(1, stats.totalScore);
+    var speedScore = Math.floor((stats.maxSpeed / 200) * 100);
+    var explorationScore = Math.min(100, Object.keys(stats.branches || {}).length * 25);
+    var skillScore = Math.min(100, (stats.comboInfo ? stats.comboInfo.maxCombo : 0) * 10);
+    var riskScore = Math.min(100, ((stats.weightBreakdown || {}).avgRiskLevel || 1) * 30);
+    var survivalScore = Math.floor((stats.health / 100) * 100);
+    var collectionScore = Math.min(100, (stats.collectibleValue / 500) * 100);
+
+    var speedPct = (bonus.distance || 0) / totalScore;
+    var explorationPct = ((bonus.branchBonus || 0) + (bonus.explorationBonus || 0)) / totalScore;
+    var skillPct = ((bonus.comboBonus || 0) + (bonus.styleBonus || 0)) / totalScore;
+    var riskPct = (bonus.riskBonus || 0) / totalScore;
+    var survivalPct = (bonus.healthBonus || 0) / totalScore;
+    var collectionPct = (bonus.collectibleBonus || 0) / totalScore;
+
+    return [
+      {
+        id: 'speed',
+        label: '速度',
+        icon: '🚗',
+        score: speedScore,
+        percentage: Math.max(speedPct, 0.1),
+        color: '#2196f3',
+        description: '行驶速度和距离得分'
+      },
+      {
+        id: 'exploration',
+        label: '探索',
+        icon: '🗺️',
+        score: explorationScore,
+        percentage: Math.max(explorationPct, 0.05),
+        color: '#9c27b0',
+        description: '路线探索和发现奖励'
+      },
+      {
+        id: 'skill',
+        label: '技巧',
+        icon: '🔥',
+        score: skillScore,
+        percentage: Math.max(skillPct, 0.05),
+        color: '#ff5722',
+        description: '连击和特技表现'
+      },
+      {
+        id: 'risk',
+        label: '冒险',
+        icon: '⚠️',
+        score: riskScore,
+        percentage: Math.max(riskPct, 0.05),
+        color: '#f44336',
+        description: '高风险路线奖励'
+      },
+      {
+        id: 'survival',
+        label: '生存',
+        icon: '❤️',
+        score: survivalScore,
+        percentage: Math.max(survivalPct, 0.05),
+        color: '#e91e63',
+        description: '生命值保持和无伤奖励'
+      },
+      {
+        id: 'collection',
+        label: '收集',
+        icon: '💎',
+        score: collectionScore,
+        percentage: Math.max(collectionPct, 0.05),
+        color: '#00bcd4',
+        description: '收集品和隐藏内容'
+      }
+    ];
+  };
+
+  proto.getGameSettings = function() {
+    try {
+      var key = 'mountain_racer_settings';
+      var saved = localStorage.getItem(key);
+      return saved ? JSON.parse(saved) : {
+        soundEnabled: true,
+        musicEnabled: true,
+        vibrationEnabled: true,
+        difficulty: 'normal',
+        controlMode: 'touch',
+        showHints: true,
+        particleEffects: true
+      };
+    } catch (e) {
+      return {
+        soundEnabled: true,
+        musicEnabled: true,
+        vibrationEnabled: true,
+        difficulty: 'normal',
+        controlMode: 'touch',
+        showHints: true,
+        particleEffects: true
+      };
+    }
+  };
+
+  proto.saveGameSettings = function(settings) {
+    try {
+      var key = 'mountain_racer_settings';
+      localStorage.setItem(key, JSON.stringify(settings));
+    } catch (e) {}
+  };
+
+  proto.updateMidGameSettings = function(key, value) {
+    this.midGameSettings[key] = value;
   };
 
   proto.destroy = function() {};

@@ -71,6 +71,149 @@
     };
 
     this.branchScoreBreakdown = {};
+
+    this.midGameSettings = {
+      difficulty: 'normal',
+      sfxEnabled: true,
+      controlMode: 'keyboard',
+      cameraShake: true,
+      showFPS: false
+    };
+
+    this.runHistory = [];
+    this.highScoreThresholds = [0.8, 0.9, 0.95, 1.0, 1.05, 1.1];
+    this.highScoreBreakthrough = null;
+    this.segmentScores = [];
+    this.lastSegmentX = 0;
+    this.segmentInterval = 500;
+
+    this.applyMidGameSettings = function(settings) {
+      var keys = Object.keys(settings || {});
+      for (var i = 0; i < keys.length; i++) {
+        if (this.midGameSettings.hasOwnProperty(keys[i])) {
+          this.midGameSettings[keys[i]] = settings[keys[i]];
+        }
+      }
+    };
+
+    this.getMidGameSettings = function() {
+      return {
+        difficulty: this.midGameSettings.difficulty,
+        sfxEnabled: this.midGameSettings.sfxEnabled,
+        controlMode: this.midGameSettings.controlMode,
+        cameraShake: this.midGameSettings.cameraShake,
+        showFPS: this.midGameSettings.showFPS
+      };
+    };
+
+    this.updateSegmentScore = function(currentX) {
+      if (currentX - this.lastSegmentX < this.segmentInterval) return;
+      var segment = {
+        startX: this.lastSegmentX,
+        endX: currentX,
+        score: this.score,
+        distance: this.distance,
+        branch: this.currentBranch,
+        combo: this.comboCount,
+        health: this.health,
+        timestamp: Date.now() - this.startTime
+      };
+      this.segmentScores.push(segment);
+      this.lastSegmentX = currentX;
+    };
+
+    this.checkHighScoreBreakthrough = function() {
+      var highScore = this.getHighScore();
+      if (highScore <= 0) return null;
+      var ratio = this.score / highScore;
+      var passedThresholds = [];
+      for (var i = 0; i < this.highScoreThresholds.length; i++) {
+        var threshold = this.highScoreThresholds[i];
+        if (ratio >= threshold) {
+          passedThresholds.push({
+            threshold: threshold,
+            label: this.getThresholdLabel(threshold),
+            percentage: Math.floor(threshold * 100)
+          });
+        }
+      }
+      if (passedThresholds.length > 0) {
+        var latest = passedThresholds[passedThresholds.length - 1];
+        if (!this.highScoreBreakthrough || this.highScoreBreakthrough.threshold < latest.threshold) {
+          this.highScoreBreakthrough = latest;
+          return latest;
+        }
+      }
+      return null;
+    };
+
+    this.getThresholdLabel = function(threshold) {
+      var labels = {
+        0.8: '接近高分',
+        0.9: '逼近纪录',
+        0.95: '差一点!',
+        1.0: '🏆 平纪录!',
+        1.05: '🌟 超越高分!',
+        1.1: '💎 大幅超越!'
+      };
+      return labels[threshold] || '突破';
+    };
+
+    this.getReplayComparisonData = function() {
+      var current = this.getDetailedStats();
+      var prev = this.previousBestStats;
+      if (!prev) {
+        return {
+          hasComparison: false,
+          current: current,
+          previous: null,
+          diff: null,
+          segmentComparison: null
+        };
+      }
+      var diff = {};
+      var numericKeys = ['totalScore', 'distance', 'maxSpeed', 'health', 'damageTaken', 'collectibleValue', 'mergeCount', 'hiddenBranchesFound', 'jumpCombo'];
+      for (var i = 0; i < numericKeys.length; i++) {
+        var key = numericKeys[i];
+        diff[key] = (current[key] || 0) - (prev[key] || 0);
+      }
+      diff.time = (prev.time || 0) - (current.time || 0);
+      var currentCombo = current.comboInfo || {};
+      var prevCombo = prev.comboInfo || {};
+      diff.maxCombo = (currentCombo.maxCombo || 0) - (prevCombo.maxCombo || 0);
+      diff.totalObstaclePasses = (currentCombo.totalObstaclePasses || 0) - (prevCombo.totalObstaclePasses || 0);
+      var currentBranches = Object.keys(current.branches || {}).length;
+      var prevBranches = Object.keys(prev.branches || {}).length;
+      diff.branchesExplored = currentBranches - prevBranches;
+      diff.perfectRun = current.perfectRun && !prev.perfectRun;
+      var segmentComparison = this.buildSegmentComparison(current, prev);
+      return {
+        hasComparison: true,
+        current: current,
+        previous: prev,
+        diff: diff,
+        segmentComparison: segmentComparison
+      };
+    };
+
+    this.buildSegmentComparison = function(current, prev) {
+      var currentSegments = this.segmentScores || [];
+      if (currentSegments.length === 0) return null;
+      var prevSegments = prev.segmentScores || [];
+      var maxLen = Math.max(currentSegments.length, prevSegments.length);
+      var result = [];
+      for (var i = 0; i < maxLen; i++) {
+        var cs = currentSegments[i] || null;
+        var ps = prevSegments[i] || null;
+        result.push({
+          index: i,
+          current: cs,
+          previous: ps,
+          scoreDiff: cs && ps ? cs.score - ps.score : null
+        });
+      }
+      return result;
+    };
   };
 
   var proto = MountainRacer.ScoreManager.prototype;
@@ -125,6 +268,13 @@
     this.lastDistanceX = currentX;
 
     this.bonusScores.distance = Math.floor(this.distance * 0.1);
+
+    this.updateSegmentScore(currentX);
+
+    var breakthrough = this.checkHighScoreBreakthrough();
+    if (breakthrough) {
+      this.highScoreBreakthrough = breakthrough;
+    }
   };
 
   proto.addBonusScore = function(points, type) {
@@ -446,8 +596,10 @@
       this.score += weightedBonus;
 
       this.calculateBranchScoreBreakdown();
+      this.calculateScoreImprovements();
 
       this.saveHighScore();
+      this.saveBestStats();
       this.saveBranchProgress();
 
       return true;
@@ -512,7 +664,10 @@
       mergeCount: this.mergeCount,
       hiddenBranchesFound: this.hiddenBranchesFound,
       totalWeightedMultiplier: this.totalWeightedMultiplier,
-      comboInfo: this.getComboInfo()
+      comboInfo: this.getComboInfo(),
+      segmentScores: this.segmentScores,
+      highScoreBreakthrough: this.highScoreBreakthrough,
+      midGameSettings: this.getMidGameSettings()
     };
   };
 
@@ -590,6 +745,345 @@
     } catch (e) {
       return [1];
     }
+  };
+
+  proto.loadPreviousBest = function() {
+    try {
+      var key = 'mountain_racer_best_stats_' + this.level;
+      var saved = localStorage.getItem(key);
+      if (saved) {
+        this.previousBestStats = JSON.parse(saved);
+      }
+    } catch (e) {}
+  };
+
+  proto.saveBestStats = function() {
+    try {
+      var key = 'mountain_racer_best_stats_' + this.level;
+      var current = this.getDetailedStats();
+      var previous = this.previousBestStats;
+
+      if (!previous || current.totalScore > previous.totalScore) {
+        localStorage.setItem(key, JSON.stringify(current));
+      }
+
+      var historyKey = 'mountain_racer_run_history_' + this.level;
+      var history = [];
+      try {
+        var savedHistory = localStorage.getItem(historyKey);
+        if (savedHistory) {
+          history = JSON.parse(savedHistory);
+        }
+      } catch (e) {}
+
+      var runRecord = {
+        score: current.totalScore,
+        time: current.time,
+        distance: current.distance,
+        health: current.health,
+        perfectRun: current.perfectRun,
+        maxSpeed: current.maxSpeed,
+        maxCombo: current.comboInfo ? current.comboInfo.maxCombo : 0,
+        branches: Object.keys(current.branches || {}).length,
+        timestamp: Date.now(),
+        win: this.isComplete,
+        segmentScores: current.segmentScores || [],
+        bonusScores: current.bonusScores || {},
+        damageTaken: current.damageTaken || 0,
+        collectibleValue: current.collectibleValue || 0,
+        jumpCombo: current.jumpCombo || 0
+      };
+
+      history.unshift(runRecord);
+      if (history.length > 10) history = history.slice(0, 10);
+      localStorage.setItem(historyKey, JSON.stringify(history));
+    } catch (e) {}
+  };
+
+  proto.getRunHistory = function() {
+    try {
+      var key = 'mountain_racer_run_history_' + this.level;
+      var saved = localStorage.getItem(key);
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  };
+
+  proto.calculateScoreImprovements = function() {
+    if (!this.previousBestStats) {
+      this.scoreImprovements = { isNewBest: true, improvements: [], newRecords: [] };
+      return this.scoreImprovements;
+    }
+
+    var current = this.getDetailedStats();
+    var prev = this.previousBestStats;
+    var improvements = [];
+    var newRecords = [];
+
+    var scoreDiff = current.totalScore - prev.totalScore;
+    if (scoreDiff > 0) {
+      improvements.push({
+        label: '总分',
+        current: current.totalScore,
+        previous: prev.totalScore,
+        diff: scoreDiff,
+        percent: ((scoreDiff / prev.totalScore) * 100).toFixed(1),
+        icon: '🏆',
+        major: true
+      });
+      newRecords.push('总分');
+    }
+
+    var timeDiff = prev.time - current.time;
+    if (this.isComplete && timeDiff > 0.1) {
+      improvements.push({
+        label: '用时',
+        current: current.time,
+        previous: prev.time,
+        diff: timeDiff,
+        percent: ((timeDiff / prev.time) * 100).toFixed(1),
+        icon: '⏱',
+        faster: true
+      });
+      newRecords.push('用时');
+    }
+
+    var healthDiff = current.health - prev.health;
+    if (healthDiff > 0) {
+      improvements.push({
+        label: '剩余生命',
+        current: current.health,
+        previous: prev.health,
+        diff: healthDiff,
+        percent: ((healthDiff / Math.max(1, prev.health)) * 100).toFixed(1),
+        icon: '❤️'
+      });
+    }
+
+    var speedDiff = current.maxSpeed - prev.maxSpeed;
+    if (speedDiff > 0) {
+      improvements.push({
+        label: '最高时速',
+        current: current.maxSpeed,
+        previous: prev.maxSpeed,
+        diff: speedDiff,
+        percent: ((speedDiff / Math.max(1, prev.maxSpeed)) * 100).toFixed(1),
+        icon: '🚗'
+      });
+    }
+
+    var currentCombo = current.comboInfo ? current.comboInfo.maxCombo : 0;
+    var prevCombo = prev.comboInfo ? prev.comboInfo.maxCombo : 0;
+    var comboDiff = currentCombo - prevCombo;
+    if (comboDiff > 0) {
+      improvements.push({
+        label: '最大连击',
+        current: currentCombo,
+        previous: prevCombo,
+        diff: comboDiff,
+        percent: ((comboDiff / Math.max(1, prevCombo)) * 100).toFixed(1),
+        icon: '🔥'
+      });
+      newRecords.push('最大连击');
+    }
+
+    var currentBranches = Object.keys(current.branches || {}).length;
+    var prevBranches = Object.keys(prev.branches || {}).length;
+    var branchDiff = currentBranches - prevBranches;
+    if (branchDiff > 0) {
+      improvements.push({
+        label: '探索路线',
+        current: currentBranches,
+        previous: prevBranches,
+        diff: branchDiff,
+        percent: ((branchDiff / Math.max(1, prevBranches)) * 100).toFixed(1),
+        icon: '🗺️'
+      });
+      newRecords.push('探索路线');
+    }
+
+    if (current.perfectRun && !prev.perfectRun) {
+      improvements.push({
+        label: '完美通关',
+        current: '✅',
+        previous: '❌',
+        diff: 1,
+        percent: '100',
+        icon: '💯',
+        major: true,
+        isBoolean: true
+      });
+      newRecords.push('完美通关');
+    }
+
+    var currentObstacles = current.comboInfo ? current.comboInfo.totalObstaclePasses : 0;
+    var prevObstacles = prev.comboInfo ? prev.comboInfo.totalObstaclePasses : 0;
+    var obstacleDiff = currentObstacles - prevObstacles;
+    if (obstacleDiff > 0) {
+      improvements.push({
+        label: '连续过障',
+        current: currentObstacles,
+        previous: prevObstacles,
+        diff: obstacleDiff,
+        percent: ((obstacleDiff / Math.max(1, prevObstacles)) * 100).toFixed(1),
+        icon: '🎯'
+      });
+    }
+
+    this.scoreImprovements = {
+      isNewBest: scoreDiff > 0 || !this.previousBestStats,
+      improvements: improvements,
+      newRecords: newRecords,
+      previousScore: prev ? prev.totalScore : 0
+    };
+
+    return this.scoreImprovements;
+  };
+
+  proto.getPerformanceGrade = function() {
+    var stats = this.getDetailedStats();
+    var grade = 'C';
+    var score = stats.totalScore;
+    var criteria = {
+      S: { score: 15000, perfect: true, minBranches: 3 },
+      A: { score: 10000, minBranches: 2 },
+      B: { score: 6000 },
+      C: { score: 0 }
+    };
+
+    if (stats.perfectRun && score >= criteria.S.score &&
+        Object.keys(stats.branches || {}).length >= criteria.S.minBranches) {
+      grade = 'S';
+    } else if (score >= criteria.A.score &&
+               Object.keys(stats.branches || {}).length >= criteria.A.minBranches) {
+      grade = 'A';
+    } else if (score >= criteria.B.score) {
+      grade = 'B';
+    }
+
+    var gradeInfo = {
+      'S': { label: 'S 级', color: '#ffd700', desc: '传奇车手！完美表现！', stars: 5 },
+      'A': { label: 'A 级', color: '#ff6b35', desc: '优秀表现！继续保持！', stars: 4 },
+      'B': { label: 'B 级', color: '#4caf50', desc: '不错的成绩！还有提升空间', stars: 3 },
+      'C': { label: 'C 级', color: '#2196f3', desc: '继续努力，你可以做得更好！', stars: 2 }
+    };
+
+    return {
+      grade: grade,
+      ...gradeInfo[grade],
+      scoreBreakdown: this.getScoreDimensionBreakdown()
+    };
+  };
+
+  proto.getScoreDimensionBreakdown = function() {
+    var stats = this.getDetailedStats();
+    var bonus = stats.bonusScores || {};
+
+    var totalScore = Math.max(1, stats.totalScore);
+    var speedScore = Math.floor((stats.maxSpeed / 200) * 100);
+    var explorationScore = Math.min(100, Object.keys(stats.branches || {}).length * 25);
+    var skillScore = Math.min(100, (stats.comboInfo ? stats.comboInfo.maxCombo : 0) * 10);
+    var riskScore = Math.min(100, ((stats.weightBreakdown || {}).avgRiskLevel || 1) * 30);
+    var survivalScore = Math.floor((stats.health / 100) * 100);
+    var collectionScore = Math.min(100, (stats.collectibleValue / 500) * 100);
+
+    var speedPct = (bonus.distance || 0) / totalScore;
+    var explorationPct = ((bonus.branchBonus || 0) + (bonus.explorationBonus || 0)) / totalScore;
+    var skillPct = ((bonus.comboBonus || 0) + (bonus.styleBonus || 0)) / totalScore;
+    var riskPct = (bonus.riskBonus || 0) / totalScore;
+    var survivalPct = (bonus.healthBonus || 0) / totalScore;
+    var collectionPct = (bonus.collectibleBonus || 0) / totalScore;
+
+    return [
+      {
+        id: 'speed',
+        label: '速度',
+        icon: '🚗',
+        score: speedScore,
+        percentage: Math.max(speedPct, 0.1),
+        color: '#2196f3',
+        description: '行驶速度和距离得分'
+      },
+      {
+        id: 'exploration',
+        label: '探索',
+        icon: '🗺️',
+        score: explorationScore,
+        percentage: Math.max(explorationPct, 0.05),
+        color: '#9c27b0',
+        description: '路线探索和发现奖励'
+      },
+      {
+        id: 'skill',
+        label: '技巧',
+        icon: '🔥',
+        score: skillScore,
+        percentage: Math.max(skillPct, 0.05),
+        color: '#ff5722',
+        description: '连击和特技表现'
+      },
+      {
+        id: 'risk',
+        label: '冒险',
+        icon: '⚠️',
+        score: riskScore,
+        percentage: Math.max(riskPct, 0.05),
+        color: '#f44336',
+        description: '高风险路线奖励'
+      },
+      {
+        id: 'survival',
+        label: '生存',
+        icon: '❤️',
+        score: survivalScore,
+        percentage: Math.max(survivalPct, 0.05),
+        color: '#e91e63',
+        description: '生命值保持和无伤奖励'
+      },
+      {
+        id: 'collection',
+        label: '收集',
+        icon: '💎',
+        score: collectionScore,
+        percentage: Math.max(collectionPct, 0.05),
+        color: '#00bcd4',
+        description: '收集品和隐藏内容'
+      }
+    ];
+  };
+
+  proto.getGameSettings = function() {
+    try {
+      var key = 'mountain_racer_settings';
+      var saved = localStorage.getItem(key);
+      return saved ? JSON.parse(saved) : {
+        soundEnabled: true,
+        musicEnabled: true,
+        vibrationEnabled: true,
+        difficulty: 'normal',
+        controlMode: 'touch',
+        showHints: true,
+        particleEffects: true
+      };
+    } catch (e) {
+      return {
+        soundEnabled: true,
+        musicEnabled: true,
+        vibrationEnabled: true,
+        difficulty: 'normal',
+        controlMode: 'touch',
+        showHints: true,
+        particleEffects: true
+      };
+    }
+  };
+
+  proto.saveGameSettings = function(settings) {
+    try {
+      var key = 'mountain_racer_settings';
+      localStorage.setItem(key, JSON.stringify(settings));
+    } catch (e) {}
   };
 
   proto.destroy = function() {};

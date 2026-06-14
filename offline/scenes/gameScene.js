@@ -296,8 +296,8 @@
     this.pauseOverlay.setScrollFactor(0);
     this.pauseOverlay.setDepth(2000);
 
-    var panelW = 280;
-    var panelH = 240;
+    var panelW = 320;
+    var panelH = 380;
 
     this.pausePanel = this.add.graphics();
     this.pausePanel.fillStyle(0xffffff, 0.98);
@@ -313,19 +313,21 @@
       color: '#333333'
     }).setOrigin(0.5).setScrollFactor(0).setDepth(2002);
 
-    var createBtn = function(label, y, color, onClick) {
+    var createBtn = function(label, y, color, onClick, btnWidth, icon) {
+      btnWidth = btnWidth || 200;
       var btn = self.add.container(width / 2, y);
-      btn.setSize(200, 44);
+      btn.setSize(btnWidth, 44);
       btn.setScrollFactor(0);
       btn.setDepth(2002);
 
       var bg = self.add.graphics();
       bg.fillStyle(color, 1);
-      bg.fillRoundedRect(-100, -22, 200, 44, 10);
+      bg.fillRoundedRect(-btnWidth / 2, -22, btnWidth, 44, 10);
       bg.lineStyle(2, 0xffffff, 0.5);
-      bg.strokeRoundedRect(-100, -22, 200, 44, 10);
+      bg.strokeRoundedRect(-btnWidth / 2, -22, btnWidth, 44, 10);
 
-      var text = self.add.text(0, 0, label, {
+      var displayLabel = icon ? icon + ' ' + label : label;
+      var text = self.add.text(0, 0, displayLabel, {
         fontSize: '18px',
         fontWeight: 'bold',
         color: '#ffffff'
@@ -333,7 +335,7 @@
 
       btn.add([bg, text]);
       btn.setInteractive(
-        new Phaser.Geom.Rectangle(-100, -22, 200, 44),
+        new Phaser.Geom.Rectangle(-btnWidth / 2, -22, btnWidth, 44),
         Phaser.Geom.Rectangle.Contains
       );
 
@@ -347,19 +349,32 @@
       return btn;
     };
 
-    this.resumeBtn = createBtn('▶ 继续游戏', height / 2 - 20, 0x4caf50, function() {
-      self.togglePause();
-    });
+    var btnY = height / 2 - 90;
+    var gap = 52;
 
-    this.restartBtn = createBtn('🔄 重新开始', height / 2 + 35, 0x2196f3, function() {
+    this.resumeBtn = createBtn('继续游戏', btnY, 0x4caf50, function() {
+      self.togglePause();
+    }, 240, '▶');
+
+    this.scorePreviewBtn = createBtn('成绩拆解', btnY + gap, 0xff9800, function() {
+      self.hidePauseMenu();
+      self.showScoreBreakdownPanel();
+    }, 240, '📊');
+
+    this.settingsBtn = createBtn('游戏设置', btnY + gap * 2, 0x9c27b0, function() {
+      self.hidePauseMenu();
+      self.showSettingsPanel();
+    }, 240, '⚙️');
+
+    this.restartBtn = createBtn('重新开始', btnY + gap * 3, 0x2196f3, function() {
       self.cleanup();
       self.scene.restart({ level: self.level });
-    });
+    }, 240, '🔄');
 
-    this.menuBtn = createBtn('🏠 返回菜单', height / 2 + 90, 0x9e9e9e, function() {
+    this.menuBtn = createBtn('返回菜单', btnY + gap * 4, 0x9e9e9e, function() {
       self.cleanup();
       self.scene.start('MenuScene');
-    });
+    }, 240, '🏠');
   };
 
   proto.hidePauseMenu = function() {
@@ -367,6 +382,8 @@
     if (this.pausePanel) this.pausePanel.destroy();
     if (this.pauseTitle) this.pauseTitle.destroy();
     if (this.resumeBtn) this.resumeBtn.destroy();
+    if (this.scorePreviewBtn) this.scorePreviewBtn.destroy();
+    if (this.settingsBtn) this.settingsBtn.destroy();
     if (this.restartBtn) this.restartBtn.destroy();
     if (this.menuBtn) this.menuBtn.destroy();
   };
@@ -809,6 +826,10 @@
   proto.showGameOver = function(win, message) {
     var self = this;
     var detailedStats = this.scoreManager.getDetailedStats();
+    var scoreImprovements = this.scoreManager.scoreImprovements || {};
+    var performanceGrade = this.scoreManager.getPerformanceGrade();
+    var runHistory = this.scoreManager.getRunHistory();
+    var previousBestStats = this.scoreManager.previousBestStats;
 
     this.time.delayedCall(600, function() {
       self.scene.start('GameOverScene', {
@@ -820,9 +841,403 @@
         health: Math.floor(self.scoreManager.getHealthPercent() * 100),
         highScore: self.scoreManager.getHighScore(),
         detailedStats: detailedStats,
-        currentBranch: self.terrain.currentBranch
+        currentBranch: self.terrain.currentBranch,
+        scoreImprovements: scoreImprovements,
+        performanceGrade: performanceGrade,
+        runHistory: runHistory,
+        previousBestStats: previousBestStats
       });
     });
+  };
+
+  proto.showSettingsPanel = function() {
+    var width = this.scale.width;
+    var height = this.scale.height;
+    var self = this;
+
+    this.settingsOverlay = this.add.graphics();
+    this.settingsOverlay.fillStyle(0x000000, 0.8);
+    this.settingsOverlay.fillRect(0, 0, width, height);
+    this.settingsOverlay.setScrollFactor(0);
+    this.settingsOverlay.setDepth(2100);
+
+    var panelW = 340;
+    var panelH = 520;
+    var panelX = width / 2 - panelW / 2;
+    var panelY = height / 2 - panelH / 2;
+
+    this.settingsPanel = this.add.graphics();
+    this.settingsPanel.fillStyle(0xffffff, 0.98);
+    this.settingsPanel.fillRoundedRect(panelX, panelY, panelW, panelH, 16);
+    this.settingsPanel.lineStyle(3, 0xff6b35, 1);
+    this.settingsPanel.strokeRoundedRect(panelX, panelY, panelW, panelH, 16);
+    this.settingsPanel.setScrollFactor(0);
+    this.settingsPanel.setDepth(2101);
+
+    this.settingsTitle = this.add.text(width / 2, panelY + 35, '⚙️ 游戏设置', {
+      fontSize: '24px',
+      fontWeight: 'bold',
+      color: '#333333'
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(2102);
+
+    this.currentSettings = this.scoreManager.getGameSettings();
+    this.settingItems = [];
+
+    var settingItems = [
+      { id: 'soundEnabled', label: '音效', icon: '🔊', type: 'toggle' },
+      { id: 'musicEnabled', label: '音乐', icon: '🎵', type: 'toggle' },
+      { id: 'vibrationEnabled', label: '震动反馈', icon: '📳', type: 'toggle' },
+      { id: 'showHints', label: '游戏提示', icon: '💡', type: 'toggle' },
+      { id: 'particleEffects', label: '粒子效果', icon: '✨', type: 'toggle' }
+    ];
+
+    var controlModes = [
+      { id: 'touch', label: '触屏', icon: '👆' },
+      { id: 'keyboard', label: '键盘', icon: '⌨️' },
+      { id: 'auto', label: '自动', icon: '🤖' }
+    ];
+
+    var startY = panelY + 80;
+    var gap = 50;
+
+    settingItems.forEach(function(item, index) {
+      var y = startY + index * gap;
+      var itemGroup = self.add.container(panelX + 20, y);
+      itemGroup.setScrollFactor(0);
+      itemGroup.setDepth(2102);
+
+      var iconText = self.add.text(0, 0, item.icon + ' ' + item.label, {
+        fontSize: '18px',
+        color: '#333333'
+      }).setOrigin(0, 0.5);
+
+      var toggle = self.createToggle(panelW - 60, 0, self.currentSettings[item.id], function(enabled) {
+        self.currentSettings[item.id] = enabled;
+        self.applySettings(item.id, enabled);
+      });
+
+      itemGroup.add([iconText, toggle]);
+      self.settingItems.push(itemGroup);
+    });
+
+    var controlY = startY + settingItems.length * gap + 30;
+
+    this.controlTitle = this.add.text(panelX + 20, controlY, '🎮 控制方式', {
+      fontSize: '18px',
+      fontWeight: 'bold',
+      color: '#333333'
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(2102);
+
+    this.controlButtons = [];
+    controlModes.forEach(function(mode, index) {
+      var btnX = panelX + 40 + index * 100;
+      var btn = self.createControlButton(btnX, controlY + 50, mode,
+        self.currentSettings.controlMode === mode.id);
+      self.controlButtons.push(btn);
+    });
+
+    this.saveSettingsBtn = this.createSettingsButton(width / 2 - 60, panelY + panelH - 60, '保存', 0x4caf50, function() {
+      self.saveGameSettings();
+    });
+
+    this.backBtn = this.createSettingsButton(width / 2 + 60, panelY + panelH - 60, '返回', 0x9e9e9e, function() {
+      self.hideSettingsPanel();
+      self.showPauseMenu();
+    });
+  };
+
+  proto.createToggle = function(x, y, initialValue, onChange) {
+    var self = this;
+    var group = this.add.container(x, y);
+    group.setScrollFactor(0);
+    group.setDepth(2103);
+
+    var bg = this.add.graphics();
+    bg.fillStyle(initialValue ? 0x4caf50 : 0xcccccc, 1);
+    bg.fillRoundedRect(-25, -15, 50, 30, 15);
+    bg.setScrollFactor(0);
+
+    var knob = this.add.graphics();
+    knob.fillStyle(0xffffff, 1);
+    knob.fillCircle(initialValue ? 10 : -10, 0, 11);
+    knob.setScrollFactor(0);
+
+    group.add([bg, knob]);
+    group.setSize(50, 30);
+    group.setInteractive(
+      new Phaser.Geom.Rectangle(-25, -15, 50, 30),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    group.enabled = initialValue;
+
+    group.on('pointerdown', function() {
+      group.enabled = !group.enabled;
+      onChange(group.enabled);
+
+      bg.clear();
+      bg.fillStyle(group.enabled ? 0x4caf50 : 0xcccccc, 1);
+      bg.fillRoundedRect(-25, -15, 50, 30, 15);
+
+      knob.clear();
+      knob.fillStyle(0xffffff, 1);
+      knob.fillCircle(group.enabled ? 10 : -10, 0, 11);
+
+      self.tweens.add({
+        targets: knob,
+        x: group.enabled ? 10 : -10,
+        duration: 200,
+        ease: 'Quad.easeOut'
+      });
+    });
+
+    return group;
+  };
+
+  proto.createControlButton = function(x, y, mode, isSelected) {
+    var self = this;
+    var btn = this.add.container(x, y);
+    btn.setSize(80, 60);
+    btn.setScrollFactor(0);
+    btn.setDepth(2103);
+    btn.modeId = mode.id;
+
+    var bg = this.add.graphics();
+    bg.fillStyle(isSelected ? 0x4caf50 : 0xf0f0f0, 1);
+    bg.fillRoundedRect(-40, -30, 80, 60, 8);
+    if (isSelected) {
+      bg.lineStyle(2, 0x45a049, 1);
+      bg.strokeRoundedRect(-40, -30, 80, 60, 8);
+    }
+    bg.setScrollFactor(0);
+
+    var iconText = this.add.text(0, -8, mode.icon, {
+      fontSize: '20px'
+    }).setOrigin(0.5).setScrollFactor(0);
+
+    var labelText = this.add.text(0, 12, mode.label, {
+      fontSize: '12px',
+      color: isSelected ? '#ffffff' : '#333333',
+      fontWeight: 'bold'
+    }).setOrigin(0.5).setScrollFactor(0);
+
+    btn.add([bg, iconText, labelText]);
+
+    btn.setInteractive(
+      new Phaser.Geom.Rectangle(-40, -30, 80, 60),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    btn.on('pointerdown', function() {
+      self.currentSettings.controlMode = mode.id;
+      self.applySettings('controlMode', mode.id);
+      self.updateControlButtons();
+    });
+
+    return btn;
+  };
+
+  proto.updateControlButtons = function() {
+    var self = this;
+    if (!this.controlButtons) return;
+
+    this.controlButtons.forEach(function(btn) {
+      var isSelected = self.currentSettings.controlMode === btn.modeId;
+      var bg = btn.getAt(0);
+      var labelText = btn.getAt(2);
+
+      bg.clear();
+      bg.fillStyle(isSelected ? 0x4caf50 : 0xf0f0f0, 1);
+      bg.fillRoundedRect(-40, -30, 80, 60, 8);
+      if (isSelected) {
+        bg.lineStyle(2, 0x45a049, 1);
+        bg.strokeRoundedRect(-40, -30, 80, 60, 8);
+      }
+
+      if (labelText) {
+        labelText.setColor(isSelected ? '#ffffff' : '#333333');
+      }
+    });
+  };
+
+  proto.createSettingsButton = function(x, y, label, color, onClick) {
+    var self = this;
+    var btn = this.add.container(x, y);
+    btn.setSize(100, 40);
+    btn.setScrollFactor(0);
+    btn.setDepth(2103);
+
+    var bg = this.add.graphics();
+    bg.fillStyle(color, 1);
+    bg.fillRoundedRect(-50, -20, 100, 40, 8);
+    bg.setScrollFactor(0);
+
+    var text = this.add.text(0, 0, label, {
+      fontSize: '16px',
+      fontWeight: 'bold',
+      color: '#ffffff'
+    }).setOrigin(0.5).setScrollFactor(0);
+
+    btn.add([bg, text]);
+
+    btn.setInteractive(
+      new Phaser.Geom.Rectangle(-50, -20, 100, 40),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    btn.on('pointerover', function() { btn.setScale(1.05); });
+    btn.on('pointerout', function() { btn.setScale(1); });
+    btn.on('pointerdown', function() {
+      btn.setScale(0.95);
+      setTimeout(function() { btn.setScale(1); onClick(); }, 100);
+    });
+
+    return btn;
+  };
+
+  proto.saveGameSettings = function() {
+    this.scoreManager.saveGameSettings(this.currentSettings);
+    this.tweens.add({
+      targets: [this.saveSettingsBtn],
+      scale: 0.9,
+      yoyo: true,
+      duration: 200
+    });
+  };
+
+  proto.applySettings = function(key, value) {
+    this.scoreManager.updateMidGameSettings(key, value);
+
+    if (key === 'soundEnabled' && this.soundManager) {
+      this.soundManager.setSoundEnabled(value);
+    }
+    if (key === 'musicEnabled' && this.soundManager) {
+      this.soundManager.setMusicEnabled(value);
+    }
+    if (key === 'vibrationEnabled' && navigator.vibrate) {
+      if (value) navigator.vibrate(50);
+    }
+    if (key === 'controlMode' && this.inputManager) {
+      this.inputManager.setControlMode(value);
+    }
+  };
+
+  proto.hideSettingsPanel = function() {
+    if (this.settingsOverlay) this.settingsOverlay.destroy();
+    if (this.settingsPanel) this.settingsPanel.destroy();
+    if (this.settingsTitle) this.settingsTitle.destroy();
+    if (this.settingItems) {
+      this.settingItems.forEach(function(item) { item.destroy(); });
+    }
+    if (this.controlTitle) this.controlTitle.destroy();
+    if (this.controlButtons) {
+      this.controlButtons.forEach(function(btn) { btn.destroy(); });
+    }
+    if (this.saveSettingsBtn) this.saveSettingsBtn.destroy();
+    if (this.backBtn) this.backBtn.destroy();
+  };
+
+  proto.showScoreBreakdownPanel = function() {
+    var width = this.scale.width;
+    var height = this.scale.height;
+    var self = this;
+
+    this.scoreOverlay = this.add.graphics();
+    this.scoreOverlay.fillStyle(0x000000, 0.8);
+    this.scoreOverlay.fillRect(0, 0, width, height);
+    this.scoreOverlay.setScrollFactor(0);
+    this.scoreOverlay.setDepth(2100);
+
+    var panelW = 340;
+    var panelH = 520;
+    var panelX = width / 2 - panelW / 2;
+    var panelY = height / 2 - panelH / 2;
+
+    this.scorePanel = this.add.graphics();
+    this.scorePanel.fillStyle(0xffffff, 0.98);
+    this.scorePanel.fillRoundedRect(panelX, panelY, panelW, panelH, 16);
+    this.scorePanel.lineStyle(3, 0xff9800, 1);
+    this.scorePanel.strokeRoundedRect(panelX, panelY, panelW, panelH, 16);
+    this.scorePanel.setScrollFactor(0);
+    this.scorePanel.setDepth(2101);
+
+    this.scorePanelTitle = this.add.text(width / 2, panelY + 35, '📊 实时成绩拆解', {
+      fontSize: '22px',
+      fontWeight: 'bold',
+      color: '#333333'
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(2102);
+
+    var currentScore = this.scoreManager.getScore();
+    this.currentScoreText = this.add.text(width / 2, panelY + 75, '当前得分: ' + currentScore.toLocaleString(), {
+      fontSize: '18px',
+      fontWeight: 'bold',
+      color: '#ff6b35'
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(2102);
+
+    var breakdown = this.scoreManager.getScoreDimensionBreakdown();
+    var breakdownY = panelY + 130;
+    var gap = 60;
+
+    this.breakdownItems = [];
+    breakdown.forEach(function(item, index) {
+      var y = breakdownY + index * gap;
+      var itemGroup = self.add.container(panelX + 20, y);
+      itemGroup.setScrollFactor(0);
+      itemGroup.setDepth(2102);
+
+      var icon = self.add.text(0, 0, item.icon, { fontSize: '22px' }).setOrigin(0, 0.5);
+
+      var label = self.add.text(40, -12, item.label, {
+        fontSize: '14px',
+        fontWeight: 'bold',
+        color: '#333333'
+      }).setOrigin(0, 0.5);
+
+      var barWidth = 200;
+      var barHeight = 8;
+      var barX = 40;
+      var barY = 10;
+
+      var barBg = self.add.graphics();
+      barBg.fillStyle(0xeeeeee, 1);
+      barBg.fillRoundedRect(barX, barY, barWidth, barHeight, 4);
+      barBg.setScrollFactor(0);
+
+      var fillWidth = Math.min(barWidth, (item.score / 100) * barWidth);
+      var barFill = self.add.graphics();
+      barFill.fillStyle(item.color.replace('#', '0x'), 1);
+      barFill.fillRoundedRect(barX, barY, fillWidth, barHeight, 4);
+      barFill.setScrollFactor(0);
+
+      var scoreText = self.add.text(barX + barWidth + 10, 0, item.score + '分', {
+        fontSize: '12px',
+        color: '#666666'
+      }).setOrigin(0, 0.5);
+
+      var desc = self.add.text(barX, barY + 18, item.description, {
+        fontSize: '11px',
+        color: '#999999'
+      }).setOrigin(0, 0);
+
+      itemGroup.add([icon, label, barBg, barFill, scoreText, desc]);
+      self.breakdownItems.push(itemGroup);
+    });
+
+    this.breakdownBackBtn = this.createSettingsButton(width / 2, panelY + panelH - 40, '返回暂停', 0xff9800, function() {
+      self.hideScoreBreakdownPanel();
+      self.showPauseMenu();
+    });
+  };
+
+  proto.hideScoreBreakdownPanel = function() {
+    if (this.scoreOverlay) this.scoreOverlay.destroy();
+    if (this.scorePanel) this.scorePanel.destroy();
+    if (this.scorePanelTitle) this.scorePanelTitle.destroy();
+    if (this.currentScoreText) this.currentScoreText.destroy();
+    if (this.breakdownItems) {
+      this.breakdownItems.forEach(function(item) { item.destroy(); });
+    }
+    if (this.breakdownBackBtn) this.breakdownBackBtn.destroy();
   };
 
   proto.cleanup = function() {

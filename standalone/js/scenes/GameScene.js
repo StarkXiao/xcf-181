@@ -61,6 +61,8 @@
     this.lastObstacleCheckX = 0;
     this.comboTextCooldown = 0;
 
+    this.lastBreakthroughShown = null;
+
     this.loadUnlockedBranches();
   };
 
@@ -312,8 +314,8 @@
     this.pauseOverlay.setScrollFactor(0);
     this.pauseOverlay.setDepth(2000);
 
-    var panelW = 280;
-    var panelH = 240;
+    var panelW = 320;
+    var panelH = 340;
 
     this.pausePanel = this.add.graphics();
     this.pausePanel.fillStyle(0xffffff, 0.98);
@@ -329,27 +331,29 @@
       color: '#333333'
     }).setOrigin(0.5).setScrollFactor(0).setDepth(2002);
 
-    var createBtn = function(label, y, color, onClick) {
+    var createBtn = function(label, y, color, onClick, width, icon) {
+      var btnWidth = width || 240;
       var btn = self.add.container(width / 2, y);
-      btn.setSize(200, 44);
+      btn.setSize(btnWidth, 44);
       btn.setScrollFactor(0);
       btn.setDepth(2002);
 
       var bg = self.add.graphics();
       bg.fillStyle(color, 1);
-      bg.fillRoundedRect(-100, -22, 200, 44, 10);
+      bg.fillRoundedRect(-btnWidth / 2, -22, btnWidth, 44, 10);
       bg.lineStyle(2, 0xffffff, 0.5);
-      bg.strokeRoundedRect(-100, -22, 200, 44, 10);
+      bg.strokeRoundedRect(-btnWidth / 2, -22, btnWidth, 44, 10);
 
-      var text = self.add.text(0, 0, label, {
-        fontSize: '18px',
+      var displayLabel = icon ? icon + ' ' + label : label;
+      var text = self.add.text(0, 0, displayLabel, {
+        fontSize: '16px',
         fontWeight: 'bold',
         color: '#ffffff'
       }).setOrigin(0.5);
 
       btn.add([bg, text]);
       btn.setInteractive(
-        new Phaser.Geom.Rectangle(-100, -22, 200, 44),
+        new Phaser.Geom.Rectangle(-btnWidth / 2, -22, btnWidth, 44),
         Phaser.Geom.Rectangle.Contains
       );
 
@@ -363,26 +367,539 @@
       return btn;
     };
 
-    this.resumeBtn = createBtn('▶ 继续游戏', height / 2 - 20, 0x4caf50, function() {
-      self.togglePause();
-    });
+    var btnY = height / 2 - 60;
+    var gap = 50;
 
-    this.restartBtn = createBtn('🔄 重新开始', height / 2 + 35, 0x2196f3, function() {
+    this.resumeBtn = createBtn('继续游戏', btnY, 0x4caf50, function() {
+      self.togglePause();
+    }, 240, '▶');
+
+    this.settingsBtn = createBtn('游戏设置', btnY + gap, 0x9c27b0, function() {
+      self.showSettingsPanel();
+    }, 240, '⚙️');
+
+    this.restartBtn = createBtn('重新开始', btnY + gap * 2, 0x2196f3, function() {
       self.cleanup();
       self.scene.restart({ level: self.level });
-    });
+    }, 240, '🔄');
 
-    this.menuBtn = createBtn('🏠 返回菜单', height / 2 + 90, 0x9e9e9e, function() {
+    this.menuBtn = createBtn('返回菜单', btnY + gap * 3, 0x9e9e9e, function() {
       self.cleanup();
       self.scene.start('MenuScene');
+    }, 240, '🏠');
+  };
+
+  proto.showSettingsPanel = function() {
+    var width = this.scale.width;
+    var height = this.scale.height;
+    var self = this;
+
+    if (this.pauseOverlay) this.pauseOverlay.setDepth(2500);
+
+    var gameSettings = this.scoreManager.getGameSettings();
+    var midSettings = this.scoreManager.getMidGameSettings();
+    this.tempSettings = { ...gameSettings };
+    this.tempMidSettings = { ...midSettings };
+
+    var panelW = 360;
+    var panelH = 540;
+
+    this.settingsPanel = this.add.graphics();
+    this.settingsPanel.fillStyle(0xffffff, 0.98);
+    this.settingsPanel.fillRoundedRect(width / 2 - panelW / 2, height / 2 - panelH / 2, panelW, panelH, 20);
+    this.settingsPanel.lineStyle(4, 0x9c27b0, 1);
+    this.settingsPanel.strokeRoundedRect(width / 2 - panelW / 2, height / 2 - panelH / 2, panelW, panelH, 20);
+    this.settingsPanel.setScrollFactor(0);
+    this.settingsPanel.setDepth(2501);
+
+    this.settingsTitle = this.add.text(width / 2, height / 2 - panelH / 2 + 30, '⚙️ 赛中设置', {
+      fontSize: '22px',
+      fontWeight: 'bold',
+      color: '#333333'
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(2502);
+
+    var allSettingItems = [
+      { id: 'soundEnabled', label: '音效', icon: '🔊', type: 'toggle', category: 'general' },
+      { id: 'musicEnabled', label: '音乐', icon: '🎵', type: 'toggle', category: 'general' },
+      { id: 'showHints', label: '游戏提示', icon: '💡', type: 'toggle', category: 'general' },
+      { id: 'particleEffects', label: '粒子效果', icon: '✨', type: 'toggle', category: 'general' },
+      { id: 'sfxEnabled', label: '赛中音效', icon: '🔔', type: 'toggle', category: 'midgame' },
+      { id: 'cameraShake', label: '镜头震动', icon: '📳', type: 'toggle', category: 'midgame' },
+      { id: 'showFPS', label: '显示帧率', icon: '📊', type: 'toggle', category: 'midgame' }
+    ];
+
+    this.settingsSectionLabels = [];
+
+    var generalLabel = this.add.text(width / 2 - panelW / 2 + 20, height / 2 - panelH / 2 + 60, '🎮 通用设置', {
+      fontSize: '13px',
+      fontWeight: 'bold',
+      color: '#9c27b0'
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(2503);
+    this.settingsSectionLabels.push(generalLabel);
+
+    var startY = height / 2 - panelH / 2 + 82;
+    var itemGap = 38;
+    this.settingToggles = {};
+    this.settingsItemBgs = [];
+
+    var generalCount = 0;
+    for (var gi = 0; gi < allSettingItems.length; gi++) {
+      if (allSettingItems[gi].category === 'general') generalCount++;
+    }
+
+    for (var i = 0; i < allSettingItems.length; i++) {
+      var item = allSettingItems[i];
+
+      if (item.category === 'midgame' && i === generalCount) {
+        startY += 8;
+        var midLabel = this.add.text(width / 2 - panelW / 2 + 20, startY, '🏎️ 赛中设置', {
+          fontSize: '13px',
+          fontWeight: 'bold',
+          color: '#ff6b35'
+        }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(2503);
+        this.settingsSectionLabels.push(midLabel);
+        startY += 22;
+      }
+
+      var y = startY + (item.category === 'midgame' ? (i - generalCount) * itemGap : i * itemGap);
+      if (item.category === 'midgame') {
+        y = startY + (i - generalCount) * itemGap;
+      }
+
+      var bg = this.add.graphics();
+      bg.fillStyle(0xf5f5f5, 1);
+      bg.fillRoundedRect(width / 2 - panelW / 2 + 20, y - 16, panelW - 40, 34, 8);
+      bg.setScrollFactor(0);
+      bg.setDepth(2502);
+      this.settingsItemBgs.push(bg);
+
+      var iconText = this.add.text(width / 2 - panelW / 2 + 35, y, item.icon, {
+        fontSize: '18px'
+      }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(2503);
+
+      var labelText = this.add.text(width / 2 - panelW / 2 + 65, y, item.label, {
+        fontSize: '14px',
+        fontWeight: 'bold',
+        color: '#333333'
+      }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(2503);
+
+      var initialValue;
+      if (item.category === 'midgame') {
+        initialValue = this.tempMidSettings[item.id];
+      } else {
+        initialValue = this.tempSettings[item.id];
+      }
+
+      var toggleContainer = this.createToggle(
+        width / 2 + panelW / 2 - 50,
+        y,
+        initialValue,
+        (function(itemId, category) {
+          return function(value) {
+            if (category === 'midgame') {
+              self.tempMidSettings[itemId] = value;
+              self.scoreManager.applyMidGameSettings(self.tempMidSettings);
+              self.applyMidGameSettings(self.tempMidSettings);
+            } else {
+              self.tempSettings[itemId] = value;
+            }
+          };
+        })(item.id, item.category)
+      );
+      toggleContainer.setDepth(2503);
+      this.settingToggles[item.id] = toggleContainer;
+    }
+
+    var lastSettingY = startY + (allSettingItems.length - generalCount) * itemGap + 15;
+
+    this.add.text(width / 2 - panelW / 2 + 20, lastSettingY, '🎮 控制方式', {
+      fontSize: '13px',
+      fontWeight: 'bold',
+      color: '#2196f3'
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(2503);
+
+    var controlModes = [
+      { id: 'touch', label: '触屏', icon: '👆' },
+      { id: 'keyboard', label: '键盘', icon: '⌨️' },
+      { id: 'auto', label: '自动', icon: '🤖' }
+    ];
+
+    var controlY = lastSettingY + 30;
+    this.controlButtons = [];
+    for (var c = 0; c < controlModes.length; c++) {
+      var mode = controlModes[c];
+      var cx = width / 2 - 100 + c * 100;
+      var isSelected = this.tempSettings.controlMode === mode.id;
+
+      var ctrlBtn = this.createControlButton(cx, controlY, mode, isSelected,
+        (function(modeId) {
+          return function() {
+            self.tempSettings.controlMode = modeId;
+            self.updateControlButtons();
+          };
+        })(mode.id)
+      );
+      ctrlBtn.setDepth(2503);
+      this.controlButtons.push({ btn: ctrlBtn, id: mode.id });
+    }
+
+    var difficultyY = controlY + 35;
+    this.add.text(width / 2 - panelW / 2 + 20, difficultyY, '⚡ 难度调节', {
+      fontSize: '13px',
+      fontWeight: 'bold',
+      color: '#ff6b35'
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(2503);
+
+    var difficulties = [
+      { id: 'easy', label: '简单', icon: '🟢', color: 0x4caf50 },
+      { id: 'normal', label: '普通', icon: '🟡', color: 0xff9800 },
+      { id: 'hard', label: '困难', icon: '🔴', color: 0xf44336 }
+    ];
+
+    var diffY = difficultyY + 30;
+    this.difficultyButtons = [];
+    for (var d = 0; d < difficulties.length; d++) {
+      var diff = difficulties[d];
+      var dx = width / 2 - 100 + d * 100;
+      var isDiffSelected = this.tempMidSettings.difficulty === diff.id;
+
+      var diffBtn = this.createDifficultyButton(dx, diffY, diff, isDiffSelected,
+        (function(diffId) {
+          return function() {
+            self.tempMidSettings.difficulty = diffId;
+            self.scoreManager.applyMidGameSettings({ difficulty: diffId });
+            self.updateDifficultyButtons();
+          };
+        })(diff.id)
+      );
+      diffBtn.setDepth(2503);
+      this.difficultyButtons.push({ btn: diffBtn, id: diff.id });
+    }
+
+    var btnY = height / 2 + panelH / 2 - 40;
+    var btnW = 140;
+    var btnGap = 20;
+
+    var cancelBtn = this.createSettingsButton(
+      width / 2 - btnW / 2 - btnGap / 2,
+      btnY,
+      btnW,
+      '取消',
+      0x9e9e9e,
+      function() {
+        self.hideSettingsPanel();
+      }
+    );
+    cancelBtn.setDepth(2503);
+
+    var saveBtn = this.createSettingsButton(
+      width / 2 + btnW / 2 + btnGap / 2,
+      btnY,
+      btnW,
+      '保存',
+      0x4caf50,
+      function() {
+        self.saveGameSettings();
+        self.scoreManager.applyMidGameSettings(self.tempMidSettings);
+        self.applyMidGameSettings(self.tempMidSettings);
+        self.hideSettingsPanel();
+      }
+    );
+    saveBtn.setDepth(2503);
+  };
+
+  proto.createToggle = function(x, y, initialValue, onChange) {
+    var container = this.add.container(x, y);
+    container.setScrollFactor(0);
+    container.setSize(60, 30);
+
+    var bg = this.add.graphics();
+    container.bg = bg;
+    container.value = initialValue;
+    container.onChange = onChange;
+
+    var updateVisual = function() {
+      bg.clear();
+      if (container.value) {
+        bg.fillStyle(0x4caf50, 1);
+        bg.fillRoundedRect(-30, -15, 60, 30, 15);
+        bg.fillStyle(0xffffff, 1);
+        bg.fillCircle(10, 0, 11);
+      } else {
+        bg.fillStyle(0xcccccc, 1);
+        bg.fillRoundedRect(-30, -15, 60, 30, 15);
+        bg.fillStyle(0xffffff, 1);
+        bg.fillCircle(-10, 0, 11);
+      }
+    };
+
+    updateVisual();
+    container.add(bg);
+
+    container.setInteractive(
+      new Phaser.Geom.Rectangle(-30, -15, 60, 30),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    var self = this;
+    container.on('pointerdown', function() {
+      container.value = !container.value;
+      updateVisual();
+      if (container.onChange) {
+        container.onChange(container.value);
+      }
     });
+
+    return container;
+  };
+
+  proto.createControlButton = function(x, y, mode, isSelected, onClick) {
+    var container = this.add.container(x, y);
+    container.setScrollFactor(0);
+    container.setSize(80, 40);
+    container.modeId = mode.id;
+
+    var bg = this.add.graphics();
+    container.bg = bg;
+
+    var updateVisual = function(selected) {
+      bg.clear();
+      if (selected) {
+        bg.fillStyle(0x9c27b0, 1);
+        bg.fillRoundedRect(-40, -20, 80, 40, 8);
+        bg.lineStyle(2, 0xffffff, 0.5);
+        bg.strokeRoundedRect(-40, -20, 80, 40, 8);
+      } else {
+        bg.fillStyle(0xf0f0f0, 1);
+        bg.fillRoundedRect(-40, -20, 80, 40, 8);
+        bg.lineStyle(2, 0xcccccc, 1);
+        bg.strokeRoundedRect(-40, -20, 80, 40, 8);
+      }
+    };
+
+    updateVisual(isSelected);
+    container.add(bg);
+
+    var icon = this.add.text(0, -5, mode.icon, {
+      fontSize: '16px'
+    }).setOrigin(0.5);
+    container.add(icon);
+
+    var label = this.add.text(0, 10, mode.label, {
+      fontSize: '11px',
+      fontWeight: 'bold',
+      color: isSelected ? '#ffffff' : '#666666'
+    }).setOrigin(0.5);
+    container.label = label;
+    container.add(label);
+
+    container.setInteractive(
+      new Phaser.Geom.Rectangle(-40, -20, 80, 40),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    container.on('pointerdown', function() {
+      onClick();
+    });
+
+    container.updateSelection = function(selected) {
+      updateVisual(selected);
+      label.setColor(selected ? '#ffffff' : '#666666');
+    };
+
+    return container;
+  };
+
+  proto.updateControlButtons = function() {
+    if (!this.controlButtons) return;
+    for (var i = 0; i < this.controlButtons.length; i++) {
+      var item = this.controlButtons[i];
+      var isSelected = this.tempSettings.controlMode === item.id;
+      item.btn.updateSelection(isSelected);
+    }
+  };
+
+  proto.createDifficultyButton = function(x, y, diff, isSelected, onClick) {
+    var container = this.add.container(x, y);
+    container.setScrollFactor(0);
+    container.setSize(80, 36);
+    container.diffId = diff.id;
+
+    var bg = this.add.graphics();
+    container.bg = bg;
+
+    var updateVisual = function(selected) {
+      bg.clear();
+      if (selected) {
+        bg.fillStyle(diff.color, 1);
+        bg.fillRoundedRect(-40, -18, 80, 36, 8);
+        bg.lineStyle(2, 0xffffff, 0.5);
+        bg.strokeRoundedRect(-40, -18, 80, 36, 8);
+      } else {
+        bg.fillStyle(0xf0f0f0, 1);
+        bg.fillRoundedRect(-40, -18, 80, 36, 8);
+        bg.lineStyle(2, 0xcccccc, 1);
+        bg.strokeRoundedRect(-40, -18, 80, 36, 8);
+      }
+    };
+
+    updateVisual(isSelected);
+    container.add(bg);
+
+    var icon = this.add.text(0, -5, diff.icon, {
+      fontSize: '14px'
+    }).setOrigin(0.5);
+    container.add(icon);
+
+    var label = this.add.text(0, 8, diff.label, {
+      fontSize: '11px',
+      fontWeight: 'bold',
+      color: isSelected ? '#ffffff' : '#666666'
+    }).setOrigin(0.5);
+    container.label = label;
+    container.add(label);
+
+    container.setInteractive(
+      new Phaser.Geom.Rectangle(-40, -18, 80, 36),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    container.on('pointerdown', function() {
+      onClick();
+    });
+
+    container.updateSelection = function(selected) {
+      updateVisual(selected);
+      label.setColor(selected ? '#ffffff' : '#666666');
+    };
+
+    return container;
+  };
+
+  proto.updateDifficultyButtons = function() {
+    if (!this.difficultyButtons) return;
+    for (var i = 0; i < this.difficultyButtons.length; i++) {
+      var item = this.difficultyButtons[i];
+      var isSelected = this.tempMidSettings.difficulty === item.id;
+      item.btn.updateSelection(isSelected);
+    }
+  };
+
+  proto.applyMidGameSettings = function(settings) {
+    if (settings.cameraShake === false) {
+      this.cameras.main.shake(0, 0);
+    }
+    if (settings.showFPS && !this.fpsText) {
+      this.fpsText = this.add.text(10, this.scale.height - 15, '', {
+        fontSize: '12px',
+        color: '#00ff00',
+        fontFamily: 'monospace'
+      }).setScrollFactor(0).setDepth(600);
+    } else if (!settings.showFPS && this.fpsText) {
+      this.fpsText.destroy();
+      this.fpsText = null;
+    }
+  };
+
+  proto.createSettingsButton = function(x, y, width, label, color, onClick) {
+    var container = this.add.container(x, y);
+    container.setScrollFactor(0);
+    container.setSize(width, 44);
+
+    var bg = this.add.graphics();
+    bg.fillStyle(color, 1);
+    bg.fillRoundedRect(-width / 2, -22, width, 44, 10);
+    bg.lineStyle(2, 0xffffff, 0.5);
+    bg.strokeRoundedRect(-width / 2, -22, width, 44, 10);
+    container.add(bg);
+
+    var text = this.add.text(0, 0, label, {
+      fontSize: '16px',
+      fontWeight: 'bold',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+    container.add(text);
+
+    container.setInteractive(
+      new Phaser.Geom.Rectangle(-width / 2, -22, width, 44),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    container.on('pointerover', function() { container.setScale(1.04); });
+    container.on('pointerout', function() { container.setScale(1); });
+    container.on('pointerdown', function() {
+      container.setScale(0.96);
+      setTimeout(onClick, 80);
+    });
+
+    return container;
+  };
+
+  proto.saveGameSettings = function() {
+    if (this.scoreManager && this.tempSettings) {
+      this.scoreManager.saveGameSettings(this.tempSettings);
+      this.applySettings(this.tempSettings);
+    }
+  };
+
+  proto.applySettings = function(settings) {
+    if (settings.particleEffects === false) {
+      this.tweens.killAll();
+    }
+  };
+
+  proto.hideSettingsPanel = function() {
+    if (this.pauseOverlay) this.pauseOverlay.setDepth(2000);
+
+    if (this.settingsPanel) this.settingsPanel.destroy();
+    if (this.settingsTitle) this.settingsTitle.destroy();
+
+    for (var key in this.settingToggles) {
+      if (this.settingToggles[key]) {
+        this.settingToggles[key].destroy();
+      }
+    }
+    this.settingToggles = {};
+
+    if (this.settingsItemBgs) {
+      for (var b = 0; b < this.settingsItemBgs.length; b++) {
+        this.settingsItemBgs[b].destroy();
+      }
+      this.settingsItemBgs = null;
+    }
+
+    if (this.settingsSectionLabels) {
+      for (var s = 0; s < this.settingsSectionLabels.length; s++) {
+        this.settingsSectionLabels[s].destroy();
+      }
+      this.settingsSectionLabels = null;
+    }
+
+    if (this.controlButtons) {
+      for (var i = 0; i < this.controlButtons.length; i++) {
+        this.controlButtons[i].btn.destroy();
+      }
+      this.controlButtons = null;
+    }
+
+    if (this.difficultyButtons) {
+      for (var di = 0; di < this.difficultyButtons.length; di++) {
+        this.difficultyButtons[di].btn.destroy();
+      }
+      this.difficultyButtons = null;
+    }
+
+    this.tempSettings = null;
+    this.tempMidSettings = null;
   };
 
   proto.hidePauseMenu = function() {
+    if (this.settingsPanel) this.hideSettingsPanel();
     if (this.pauseOverlay) this.pauseOverlay.destroy();
     if (this.pausePanel) this.pausePanel.destroy();
     if (this.pauseTitle) this.pauseTitle.destroy();
     if (this.resumeBtn) this.resumeBtn.destroy();
+    if (this.settingsBtn) this.settingsBtn.destroy();
     if (this.restartBtn) this.restartBtn.destroy();
     if (this.menuBtn) this.menuBtn.destroy();
   };
@@ -504,6 +1021,12 @@
 
     if (Math.random() < 0.02) {
       this.checkAchievements();
+    }
+
+    var breakthrough = this.scoreManager.highScoreBreakthrough;
+    if (breakthrough && breakthrough !== this.lastBreakthroughShown) {
+      this.lastBreakthroughShown = breakthrough;
+      this.showBreakthroughNotification(breakthrough);
     }
 
     if (this.scoreManager.checkLevelComplete(carX)) {
@@ -1344,6 +1867,67 @@
     });
   };
 
+  proto.showBreakthroughNotification = function(breakthrough) {
+    var width = this.scale.width;
+    var height = this.scale.height;
+    var self = this;
+
+    var container = this.add.container(width / 2, height / 2 - 120);
+    container.setScrollFactor(0);
+    container.setDepth(2000);
+
+    var bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.85);
+    bg.fillRoundedRect(-180, -50, 360, 100, 15);
+    bg.lineStyle(3, 0xffd700, 1);
+    bg.strokeRoundedRect(-180, -50, 360, 100, 15);
+    container.add(bg);
+
+    var icon = this.add.text(0, -25, breakthrough.threshold >= 1.0 ? '🏆' : '🔥', {
+      fontSize: '28px'
+    }).setOrigin(0.5);
+    container.add(icon);
+
+    var title = this.add.text(0, 5, breakthrough.label, {
+      fontSize: '22px',
+      fontWeight: 'bold',
+      color: '#ffd700',
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0.5);
+    container.add(title);
+
+    var detail = this.add.text(0, 30, '已达最高分 ' + breakthrough.percentage + '%!', {
+      fontSize: '13px',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+    container.add(detail);
+
+    container.setAlpha(0);
+    container.setScale(0.5);
+
+    this.tweens.add({
+      targets: container,
+      alpha: 1,
+      scale: 1,
+      duration: 400,
+      ease: 'Back.out',
+      onComplete: function() {
+        self.tweens.add({
+          targets: container,
+          y: height / 2 - 160,
+          alpha: 0,
+          delay: 2500,
+          duration: 500,
+          ease: 'Back.in',
+          onComplete: function() {
+            container.destroy();
+          }
+        });
+      }
+    });
+  };
+
   proto.updateHUD = function() {
     var score = this.scoreManager.getScore();
     var speed = Math.round(this.carPhysics.getSpeed() * 0.6);
@@ -1530,6 +2114,11 @@
   proto.showGameOver = function(win, message) {
     var self = this;
     var detailedStats = this.scoreManager.getDetailedStats();
+    var scoreImprovements = this.scoreManager.calculateScoreImprovements();
+    var performanceGrade = this.scoreManager.getPerformanceGrade();
+    var runHistory = this.scoreManager.getRunHistory();
+    var previousBest = this.scoreManager.previousBestStats;
+    var replayComparison = this.scoreManager.getReplayComparisonData();
 
     this.time.delayedCall(600, function() {
       self.scene.start('GameOverScene', {
@@ -1541,7 +2130,12 @@
         health: Math.floor(self.scoreManager.getHealthPercent() * 100),
         highScore: self.scoreManager.getHighScore(),
         detailedStats: detailedStats,
-        currentBranch: self.terrain.currentBranch
+        currentBranch: self.terrain.currentBranch,
+        scoreImprovements: scoreImprovements,
+        performanceGrade: performanceGrade,
+        runHistory: runHistory,
+        previousBestStats: previousBest,
+        replayComparison: replayComparison
       });
     });
   };

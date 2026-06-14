@@ -20,6 +20,14 @@
     this.highScore = data.highScore || 0;
     this.detailedStats = data.detailedStats || null;
     this.currentBranch = data.currentBranch || 'main';
+    this.scoreImprovements = data.scoreImprovements || null;
+    this.performanceGrade = data.performanceGrade || null;
+    this.runHistory = data.runHistory || [];
+    this.previousBestStats = data.previousBestStats || null;
+    this.replayComparison = data.replayComparison || null;
+    this.activeTab = 'summary';
+    this.highScoreAnimationPlayed = false;
+    this.tabContentElements = [];
   };
 
   proto.create = function() {
@@ -30,7 +38,9 @@
     this.createResultPanel(width, height);
 
     if (this.win && this.detailedStats) {
-      this.createDetailedStats(width, height);
+      this.createHighScoreCelebration(width, height);
+      this.createTabs(width, height);
+      this.showTab('summary');
     } else {
       this.createStats(width, height);
     }
@@ -83,7 +93,7 @@
 
   proto.createResultPanel = function(width, height) {
     var panelW = 420;
-    var panelH = this.win && this.detailedStats ? 700 : 430;
+    var panelH = this.win && this.detailedStats ? 780 : 430;
 
     var shadow = this.add.graphics();
     shadow.fillStyle(0x000000, 0.4);
@@ -114,9 +124,21 @@
       color: '#666666'
     }).setOrigin(0.5);
 
+    if (this.win && this.performanceGrade) {
+      this.createPerformanceGrade(width, height, panelH);
+    }
+
+    if (this.win && this.detailedStats && this.detailedStats.highScoreBreakthrough) {
+      this.createBreakthroughBanner(width, height, panelH);
+    }
+
     var isNewRecord = this.win && this.score >= this.highScore && this.score > 0;
     if (isNewRecord) {
-      var record = this.add.text(width / 2, height / 2 - panelH / 2 + 165, '✨ 新纪录! ✨', {
+      var recordY = height / 2 - panelH / 2 + 220;
+      if (this.detailedStats && this.detailedStats.highScoreBreakthrough) {
+        recordY += 30;
+      }
+      var record = this.add.text(width / 2, recordY, '✨ 新纪录! ✨', {
         fontSize: '18px',
         fontWeight: 'bold',
         color: '#ff6b35'
@@ -131,6 +153,126 @@
         repeat: -1
       });
     }
+  };
+
+  proto.createBreakthroughBanner = function(width, height, panelH) {
+    var breakthrough = this.detailedStats.highScoreBreakthrough;
+    if (!breakthrough) return;
+
+    var bannerY = height / 2 - panelH / 2 + 220;
+    var container = this.add.container(width / 2, bannerY);
+
+    var bg = this.add.graphics();
+    var bgColor = breakthrough.threshold >= 1.0 ? 0xffd700 : 0xff6b35;
+    bg.fillStyle(bgColor, 0.15);
+    bg.fillRoundedRect(-140, -18, 280, 36, 10);
+    bg.lineStyle(2, bgColor, 1);
+    bg.strokeRoundedRect(-140, -18, 280, 36, 10);
+    container.add(bg);
+
+    var icon = breakthrough.threshold >= 1.0 ? '🏆' : '🔥';
+    var title = this.add.text(0, 0, icon + ' ' + breakthrough.label + ' (' + breakthrough.percentage + '%)', {
+      fontSize: '15px',
+      fontWeight: 'bold',
+      color: breakthrough.threshold >= 1.0 ? '#ffd700' : '#ff6b35'
+    }).setOrigin(0.5);
+    container.add(title);
+
+    container.setAlpha(0);
+    this.tweens.add({
+      targets: container,
+      alpha: 1,
+      duration: 600,
+      delay: 800,
+      ease: 'Back.out'
+    });
+
+    if (breakthrough.threshold >= 1.0) {
+      this.createBreakthroughFireworks(width, height, bannerY);
+    }
+  };
+
+  proto.createBreakthroughFireworks = function(width, height, centerY) {
+    var self = this;
+    var delay = 1200;
+
+    for (var i = 0; i < 5; i++) {
+      (function(index) {
+        self.time.delayedCall(delay + index * 300, function() {
+          var fx = Phaser.Math.Between(100, width - 100);
+          var fy = Phaser.Math.Between(50, Math.floor(centerY - 40));
+          self.createFireworkBurst(fx, fy);
+        });
+      })(i);
+    }
+  };
+
+  proto.createFireworkBurst = function(x, y) {
+    var colors = [0xffd700, 0xff6b35, 0xe91e63, 0x2196f3, 0x4caf50, 0x9c27b0];
+    var particleCount = 8;
+
+    for (var i = 0; i < particleCount; i++) {
+      var angle = (i / particleCount) * Math.PI * 2;
+      var speed = 30 + Math.random() * 40;
+      var color = Phaser.Utils.Array.GetRandom(colors);
+      var size = 3 + Math.random() * 3;
+
+      var particle = this.add.graphics();
+      particle.fillStyle(color, 1);
+      particle.fillCircle(0, 0, size);
+      particle.x = x;
+      particle.y = y;
+      particle.setDepth(100);
+
+      var targetX = x + Math.cos(angle) * speed;
+      var targetY = y + Math.sin(angle) * speed;
+
+      this.tweens.add({
+        targets: particle,
+        x: targetX,
+        y: targetY,
+        alpha: 0,
+        scale: 0.2,
+        duration: 600 + Math.random() * 400,
+        ease: 'Power2',
+        onComplete: function() { particle.destroy(); }
+      });
+    }
+  };
+
+  proto.createPerformanceGrade = function(width, height, panelH) {
+    var grade = this.performanceGrade;
+    var gradeY = height / 2 - panelH / 2 + 180;
+
+    var gradeContainer = this.add.container(width / 2, gradeY);
+
+    var gradeBg = this.add.graphics();
+    gradeBg.fillGradientStyle(0xfff8e1, 0xfff8e1, 0xffecb3, 0xffecb3);
+    gradeBg.fillRoundedRect(-60, -30, 120, 60, 12);
+    gradeBg.lineStyle(3, grade.color, 1);
+    gradeBg.strokeRoundedRect(-60, -30, 120, 60, 12);
+    gradeContainer.add(gradeBg);
+
+    var gradeText = this.add.text(0, 0, grade.label, {
+      fontSize: '32px',
+      fontWeight: 'bold',
+      color: grade.color
+    }).setOrigin(0.5);
+    gradeContainer.add(gradeText);
+
+    var starsY = 35;
+    for (var i = 0; i < 5; i++) {
+      var star = this.add.text(-32 + i * 16, starsY, i < grade.stars ? '⭐' : '☆', {
+        fontSize: '14px'
+      }).setOrigin(0.5);
+      gradeContainer.add(star);
+    }
+
+    var descText = this.add.text(width / 2, gradeY + 55, grade.desc, {
+      fontSize: '13px',
+      color: '#666666',
+      fontStyle: 'italic'
+    }).setOrigin(0.5);
   };
 
   proto.getBranchConfig = function(branchId) {
@@ -191,40 +333,556 @@
     }
   };
 
+  proto.createHighScoreCelebration = function(width, height) {
+    if (!this.win || this.score < this.highScore || this.highScoreAnimationPlayed) return;
+    this.highScoreAnimationPlayed = true;
+
+    var isNewRecord = this.score >= this.highScore && this.score > 0;
+    if (!isNewRecord) return;
+
+    for (var i = 0; i < 20; i++) {
+      this.createConfetti(
+        Phaser.Math.Between(0, width),
+        Phaser.Math.Between(-200, -50),
+        Phaser.Math.Between(0, 360)
+      );
+    }
+  };
+
+  proto.createTabs = function(width, height) {
+    var self = this;
+    var tabY = height / 2 - 95;
+    var tabWidth = 120;
+    var tabHeight = 32;
+    var tabGap = 8;
+    var tabs = [
+      { id: 'summary', label: '📊 总览', color: 0x4caf50 },
+      { id: 'replay', label: '🔄 重跑对比', color: 0x2196f3 },
+      { id: 'breakdown', label: '📈 成绩拆解', color: 0xff6b35 }
+    ];
+
+    var totalTabW = tabs.length * tabWidth + (tabs.length - 1) * tabGap;
+    var startX = width / 2 - totalTabW / 2 + tabWidth / 2;
+
+    this.tabButtons = [];
+
+    for (var i = 0; i < tabs.length; i++) {
+      var tab = tabs[i];
+      var tx = startX + i * (tabWidth + tabGap);
+
+      var container = this.add.container(tx, tabY);
+      container.setSize(tabWidth, tabHeight);
+      container.tabId = tab.id;
+
+      var bg = this.add.graphics();
+      container.bg = bg;
+
+      var updateVisual = function(selected, tabBg, tabLabel) {
+        tabBg.clear();
+        if (selected) {
+          tabBg.fillStyle(0xffffff, 0.95);
+          tabBg.fillRoundedRect(-tabWidth / 2, -tabHeight / 2, tabWidth, tabHeight, 8);
+          tabBg.lineStyle(3, tab.color, 1);
+          tabBg.strokeRoundedRect(-tabWidth / 2, -tabHeight / 2, tabWidth, tabHeight, 8);
+          if (tabLabel) tabLabel.setColor('#333333');
+        } else {
+          tabBg.fillStyle(0xf0f0f0, 0.9);
+          tabBg.fillRoundedRect(-tabWidth / 2, -tabHeight / 2, tabWidth, tabHeight, 8);
+          tabBg.lineStyle(2, 0xcccccc, 1);
+          tabBg.strokeRoundedRect(-tabWidth / 2, -tabHeight / 2, tabWidth, tabHeight, 8);
+          if (tabLabel) tabLabel.setColor('#888888');
+        }
+      };
+
+      var label = this.add.text(0, 0, tab.label, {
+        fontSize: '13px',
+        fontWeight: 'bold',
+        color: '#888888'
+      }).setOrigin(0.5);
+      container.label = label;
+
+      updateVisual(tab.id === this.activeTab, bg, label);
+      container.add(bg);
+      container.add(label);
+
+      container.setInteractive(
+        new Phaser.Geom.Rectangle(-tabWidth / 2, -tabHeight / 2, tabWidth, tabHeight),
+        Phaser.Geom.Rectangle.Contains
+      );
+
+      (function(tabId, containerRef, tabBg, tabLbl) {
+        containerRef.on('pointerdown', function() {
+          self.showTab(tabId);
+        });
+
+        containerRef.updateTabVisual = function(selected) {
+          updateVisual(selected, tabBg, tabLbl);
+        };
+      })(tab.id, container, bg, label);
+
+      this.tabButtons.push(container);
+    }
+  };
+
+  proto.showTab = function(tabId) {
+    this.activeTab = tabId;
+
+    if (this.tabButtons) {
+      for (var i = 0; i < this.tabButtons.length; i++) {
+        var isSelected = this.tabButtons[i].tabId === tabId;
+        this.tabButtons[i].updateTabVisual(isSelected);
+      }
+    }
+
+    this.clearTabContent();
+
+    switch (tabId) {
+      case 'summary':
+        this.createSummaryTab(this.scale.width, this.scale.height);
+        break;
+      case 'replay':
+        this.createReplayComparisonTab(this.scale.width, this.scale.height);
+        break;
+      case 'breakdown':
+        this.createBreakdownTab(this.scale.width, this.scale.height);
+        break;
+    }
+  };
+
+  proto.clearTabContent = function() {
+    for (var i = 0; i < this.tabContentElements.length; i++) {
+      var el = this.tabContentElements[i];
+      if (el && el.destroy) el.destroy();
+    }
+    this.tabContentElements = [];
+  };
+
+  proto.addTabElement = function(el) {
+    this.tabContentElements.push(el);
+    return el;
+  };
+
+  proto.createSummaryTab = function(width, height) {
+    this.createDetailedStats(width, height);
+  };
+
+  proto.createReplayComparisonTab = function(width, height) {
+    var panelW = 420;
+    var contentY = height / 2 - 70;
+    var leftX = width / 2 - panelW / 2 + 15;
+
+    if (!this.replayComparison || !this.replayComparison.hasComparison) {
+      var noData = this.add.text(width / 2, contentY + 50, '📋 暂无历史对比数据', {
+        fontSize: '16px',
+        color: '#999999',
+        fontStyle: 'italic'
+      }).setOrigin(0.5);
+      this.addTabElement(noData);
+
+      var hint = this.add.text(width / 2, contentY + 80, '完成更多关卡后可查看重跑对比', {
+        fontSize: '12px',
+        color: '#bbbbbb'
+      }).setOrigin(0.5);
+      this.addTabElement(hint);
+      return;
+    }
+
+    var comparison = this.replayComparison;
+    var diff = comparison.diff || {};
+
+    var headerBg = this.add.graphics();
+    headerBg.fillStyle(0xf0f4ff, 1);
+    headerBg.fillRoundedRect(leftX, contentY, panelW - 30, 36, 8);
+    this.addTabElement(headerBg);
+
+    var headerText = this.add.text(width / 2, contentY + 18, '🔄 本次 vs 最佳成绩', {
+      fontSize: '15px',
+      fontWeight: 'bold',
+      color: '#2196f3'
+    }).setOrigin(0.5);
+    this.addTabElement(headerText);
+
+    var items = [
+      { label: '总分', current: comparison.current.totalScore, previous: comparison.previous.totalScore, diff: diff.totalScore, icon: '🏆', unit: '', color: '#ff6b35', major: true },
+      { label: '用时', current: comparison.current.time, previous: comparison.previous.time, diff: diff.time, icon: '⏱', unit: 's', color: '#2196f3', invertDir: true },
+      { label: '最高时速', current: comparison.current.maxSpeed, previous: comparison.previous.maxSpeed, diff: diff.maxSpeed, icon: '🚗', unit: ' km/h', color: '#9c27b0' },
+      { label: '行驶距离', current: comparison.current.distance, previous: comparison.previous.distance, diff: diff.distance, icon: '📏', unit: 'm', color: '#4caf50' },
+      { label: '剩余生命', current: comparison.current.health, previous: comparison.previous.health, diff: diff.health, icon: '❤️', unit: '%', color: '#e91e63' },
+      { label: '受伤量', current: comparison.current.damageTaken, previous: comparison.previous.damageTaken, diff: diff.damageTaken, icon: '💔', unit: '', color: '#f44336', invertDir: true },
+      { label: '最大连击', current: (comparison.current.comboInfo || {}).maxCombo || 0, previous: (comparison.previous.comboInfo || {}).maxCombo || 0, diff: diff.maxCombo, icon: '🔥', unit: ' 次', color: '#ff5722' },
+      { label: '连续过障', current: (comparison.current.comboInfo || {}).totalObstaclePasses || 0, previous: (comparison.previous.comboInfo || {}).totalObstaclePasses || 0, diff: diff.totalObstaclePasses, icon: '🎯', unit: ' 次', color: '#ff9800' },
+      { label: '探索路线', current: Object.keys(comparison.current.branches || {}).length, previous: Object.keys(comparison.previous.branches || {}).length, diff: diff.branchesExplored, icon: '🗺️', unit: ' 条', color: '#00bcd4' }
+    ];
+
+    if (diff.perfectRun) {
+      items.push({ label: '完美通关', current: '✅', previous: '❌', diff: null, icon: '💯', unit: '', color: '#ffd700', isBoolean: true });
+    }
+
+    var startY = contentY + 48;
+    var rowHeight = 32;
+
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      var y = startY + i * rowHeight;
+
+      var rowBg = this.add.graphics();
+      rowBg.fillStyle(i % 2 === 0 ? 0xfafafa : 0xf5f5f5, 1);
+      rowBg.fillRoundedRect(leftX, y - 12, panelW - 30, rowHeight - 2, 4);
+      this.addTabElement(rowBg);
+
+      var iconT = this.add.text(leftX + 10, y, item.icon, {
+        fontSize: '13px'
+      }).setOrigin(0, 0.5);
+      this.addTabElement(iconT);
+
+      var labelT = this.add.text(leftX + 35, y, item.label, {
+        fontSize: '12px',
+        fontWeight: 'bold',
+        color: '#666666'
+      }).setOrigin(0, 0.5);
+      this.addTabElement(labelT);
+
+      var prevX = width / 2 - 20;
+      var currX = width / 2 + 55;
+      var diffX = width / 2 + panelW / 2 - 25;
+
+      var prevT = this.add.text(prevX, y, '' + (typeof item.previous === 'number' ? Math.floor(item.previous) : item.previous), {
+        fontSize: '11px',
+        color: '#999999'
+      }).setOrigin(0, 0.5);
+      this.addTabElement(prevT);
+
+      var currT = this.add.text(currX, y, '' + (typeof item.current === 'number' ? Math.floor(item.current) : item.current), {
+        fontSize: '11px',
+        fontWeight: 'bold',
+        color: '#333333'
+      }).setOrigin(0, 0.5);
+      this.addTabElement(currT);
+
+      if (item.diff !== null && item.diff !== undefined && !item.isBoolean) {
+        var isPositive = item.invertDir ? item.diff < 0 : item.diff > 0;
+        var diffColor = isPositive ? '#4caf50' : (item.diff === 0 ? '#999999' : '#f44336');
+        var diffSign = item.diff > 0 ? '+' : '';
+        var diffT = this.add.text(diffX, y, diffSign + (typeof item.diff === 'number' ? Math.floor(item.diff) : item.diff) + item.unit, {
+          fontSize: '11px',
+          fontWeight: 'bold',
+          color: diffColor
+        }).setOrigin(1, 0.5);
+        this.addTabElement(diffT);
+      }
+    }
+
+    var colHeaderY = startY - 14;
+    var prevColT = this.add.text(width / 2 - 20, colHeaderY, '上次', {
+      fontSize: '10px',
+      color: '#aaaaaa'
+    }).setOrigin(0, 0.5);
+    this.addTabElement(prevColT);
+
+    var currColT = this.add.text(width / 2 + 55, colHeaderY, '本次', {
+      fontSize: '10px',
+      fontWeight: 'bold',
+      color: '#555555'
+    }).setOrigin(0, 0.5);
+    this.addTabElement(currColT);
+
+    var diffColT = this.add.text(width / 2 + panelW / 2 - 25, colHeaderY, '差异', {
+      fontSize: '10px',
+      fontWeight: 'bold',
+      color: '#555555'
+    }).setOrigin(1, 0.5);
+    this.addTabElement(diffColT);
+
+    if (comparison.segmentComparison && comparison.segmentComparison.length > 1) {
+      var chartY = startY + items.length * rowHeight + 20;
+      var chartLabel = this.add.text(leftX, chartY, '📊 路段得分走势', {
+        fontSize: '12px',
+        fontWeight: 'bold',
+        color: '#666666'
+      }).setOrigin(0, 0.5);
+      this.addTabElement(chartLabel);
+
+      this.createSegmentChart(width, chartY + 20, panelW, comparison.segmentComparison);
+    }
+  };
+
+  proto.createSegmentChart = function(width, startY, panelW, segments) {
+    var leftX = width / 2 - panelW / 2 + 15;
+    var chartW = panelW - 30;
+    var chartH = 80;
+
+    var chartBg = this.add.graphics();
+    chartBg.fillStyle(0xfafafa, 1);
+    chartBg.fillRoundedRect(leftX, startY, chartW, chartH, 6);
+    chartBg.lineStyle(1, 0xe0e0e0, 1);
+    chartBg.strokeRoundedRect(leftX, startY, chartW, chartH, 6);
+    this.addTabElement(chartBg);
+
+    var maxSegments = Math.min(segments.length, 20);
+    var displaySegments = segments.slice(0, maxSegments);
+
+    var maxScore = 0;
+    for (var i = 0; i < displaySegments.length; i++) {
+      if (displaySegments[i].current && displaySegments[i].current.score > maxScore) {
+        maxScore = displaySegments[i].current.score;
+      }
+      if (displaySegments[i].previous && displaySegments[i].previous.score > maxScore) {
+        maxScore = displaySegments[i].previous.score;
+      }
+    }
+    if (maxScore === 0) maxScore = 1;
+
+    var barW = Math.max(3, (chartW - 10) / maxSegments / 2 - 1);
+
+    for (var j = 0; j < displaySegments.length; j++) {
+      var seg = displaySegments[j];
+      var bx = leftX + 5 + j * ((chartW - 10) / maxSegments);
+
+      if (seg.current) {
+        var curH = Math.max(2, (seg.current.score / maxScore) * (chartH - 10));
+        var curBar = this.add.graphics();
+        curBar.fillStyle(0x2196f3, 0.8);
+        curBar.fillRect(bx, startY + chartH - 5 - curH, barW, curH);
+        this.addTabElement(curBar);
+      }
+
+      if (seg.previous) {
+        var prevH = Math.max(2, (seg.previous.score / maxScore) * (chartH - 10));
+        var prevBar = this.add.graphics();
+        prevBar.fillStyle(0xff9800, 0.5);
+        prevBar.fillRect(bx + barW + 1, startY + chartH - 5 - prevH, barW, prevH);
+        this.addTabElement(prevBar);
+      }
+    }
+
+    var legendY = startY + chartH + 5;
+    var legendCurrent = this.add.text(leftX + 10, legendY, '■ 本次', {
+      fontSize: '10px',
+      color: '#2196f3',
+      fontWeight: 'bold'
+    }).setOrigin(0, 0.5);
+    this.addTabElement(legendCurrent);
+
+    var legendPrev = this.add.text(leftX + 70, legendY, '■ 上次最佳', {
+      fontSize: '10px',
+      color: '#ff9800',
+      fontWeight: 'bold'
+    }).setOrigin(0, 0.5);
+    this.addTabElement(legendPrev);
+  };
+
+  proto.createBreakdownTab = function(width, height) {
+    var panelW = 420;
+    var contentY = height / 2 - 70;
+    var leftX = width / 2 - panelW / 2 + 15;
+
+    var dimensions = this.performanceGrade ? this.performanceGrade.scoreBreakdown || [] : [];
+
+    if (dimensions.length === 0) {
+      var noData = this.add.text(width / 2, contentY + 50, '📋 暂无成绩拆解数据', {
+        fontSize: '16px',
+        color: '#999999',
+        fontStyle: 'italic'
+      }).setOrigin(0.5);
+      this.addTabElement(noData);
+      return;
+    }
+
+    var headerBg = this.add.graphics();
+    headerBg.fillStyle(0xfff3e0, 1);
+    headerBg.fillRoundedRect(leftX, contentY, panelW - 30, 36, 8);
+    this.addTabElement(headerBg);
+
+    var headerText = this.add.text(width / 2, contentY + 18, '📈 六维成绩拆解', {
+      fontSize: '15px',
+      fontWeight: 'bold',
+      color: '#ff6b35'
+    }).setOrigin(0.5);
+    this.addTabElement(headerText);
+
+    this.createRadarChart(width, contentY + 50, 160, dimensions);
+
+    var listY = contentY + 50 + 170;
+    var listHeader = this.add.text(leftX, listY, '📋 维度详情', {
+      fontSize: '13px',
+      fontWeight: 'bold',
+      color: '#666666'
+    }).setOrigin(0, 0.5);
+    this.addTabElement(listHeader);
+
+    for (var i = 0; i < dimensions.length; i++) {
+      var dim = dimensions[i];
+      var y = listY + 24 + i * 38;
+
+      var dimBg = this.add.graphics();
+      dimBg.fillStyle(0xf8f8f8, 1);
+      dimBg.fillRoundedRect(leftX, y - 14, panelW - 30, 34, 6);
+      this.addTabElement(dimBg);
+
+      var dimIcon = this.add.text(leftX + 10, y, dim.icon, {
+        fontSize: '15px'
+      }).setOrigin(0, 0.5);
+      this.addTabElement(dimIcon);
+
+      var dimLabel = this.add.text(leftX + 35, y - 4, dim.label, {
+        fontSize: '12px',
+        fontWeight: 'bold',
+        color: '#333333'
+      }).setOrigin(0, 0.5);
+      this.addTabElement(dimLabel);
+
+      var dimDesc = this.add.text(leftX + 35, y + 10, dim.description, {
+        fontSize: '9px',
+        color: '#999999'
+      }).setOrigin(0, 0.5);
+      this.addTabElement(dimDesc);
+
+      var barBg = this.add.graphics();
+      barBg.fillStyle(0xe0e0e0, 0.5);
+      barBg.fillRoundedRect(width / 2 + 20, y - 6, 100, 12, 6);
+      this.addTabElement(barBg);
+
+      var barW = Math.max(4, dim.score);
+      var bar = this.add.graphics();
+      var barColor = Phaser.Display.Color.HexStringToColor(dim.color).color;
+      bar.fillStyle(barColor, 0.85);
+      bar.fillRoundedRect(width / 2 + 20, y - 6, barW, 12, 6);
+      this.addTabElement(bar);
+
+      var scoreT = this.add.text(width / 2 + panelW / 2 - 25, y, Math.min(100, Math.floor(dim.score)) + '', {
+        fontSize: '12px',
+        fontWeight: 'bold',
+        color: dim.color
+      }).setOrigin(1, 0.5);
+      this.addTabElement(scoreT);
+    }
+  };
+
+  proto.createRadarChart = function(width, centerY, radius, dimensions) {
+    var cx = width / 2;
+    var sides = dimensions.length;
+    if (sides < 3) return;
+
+    var angleStep = (Math.PI * 2) / sides;
+    var startAngle = -Math.PI / 2;
+
+    var webBg = this.add.graphics();
+    webBg.lineStyle(1, 0xdddddd, 0.5);
+
+    for (var ring = 1; ring <= 4; ring++) {
+      var r = radius * (ring / 4);
+      webBg.beginPath();
+      for (var s = 0; s <= sides; s++) {
+        var a = startAngle + s * angleStep;
+        var px = cx + Math.cos(a) * r;
+        var py = centerY + Math.sin(a) * r;
+        if (s === 0) webBg.moveTo(px, py);
+        else webBg.lineTo(px, py);
+      }
+      webBg.strokePath();
+    }
+
+    for (var ax = 0; ax < sides; ax++) {
+      var angle = startAngle + ax * angleStep;
+      webBg.beginPath();
+      webBg.moveTo(cx, centerY);
+      webBg.lineTo(cx + Math.cos(angle) * radius, centerY + Math.sin(angle) * radius);
+      webBg.strokePath();
+    }
+    this.addTabElement(webBg);
+
+    var dataShape = this.add.graphics();
+    var dimColor = Phaser.Display.Color.HexStringToColor(dimensions[0].color || '#2196f3').color;
+    dataShape.fillStyle(dimColor, 0.2);
+    dataShape.lineStyle(2, dimColor, 0.8);
+    dataShape.beginPath();
+
+    for (var d = 0; d <= sides; d++) {
+      var idx = d % sides;
+      var dim = dimensions[idx];
+      var a = startAngle + idx * angleStep;
+      var val = Math.min(100, dim.score) / 100;
+      var px = cx + Math.cos(a) * radius * val;
+      var py = centerY + Math.sin(a) * radius * val;
+      if (d === 0) dataShape.moveTo(px, py);
+      else dataShape.lineTo(px, py);
+    }
+    dataShape.closePath();
+    dataShape.fillPath();
+    dataShape.strokePath();
+    this.addTabElement(dataShape);
+
+    for (var l = 0; l < sides; l++) {
+      var dim = dimensions[l];
+      var labelAngle = startAngle + l * angleStep;
+      var labelR = radius + 22;
+      var lx = cx + Math.cos(labelAngle) * labelR;
+      var ly = centerY + Math.sin(labelAngle) * labelR;
+
+      var labelT = this.add.text(lx, ly, dim.icon + dim.label, {
+        fontSize: '9px',
+        fontWeight: 'bold',
+        color: dim.color || '#666666'
+      }).setOrigin(0.5);
+      this.addTabElement(labelT);
+    }
+
+    for (var dot = 0; dot < sides; dot++) {
+      var dim = dimensions[dot];
+      var a = startAngle + dot * angleStep;
+      var val = Math.min(100, dim.score) / 100;
+      var px = cx + Math.cos(a) * radius * val;
+      var py = centerY + Math.sin(a) * radius * val;
+
+      var dotGfx = this.add.graphics();
+      dotGfx.fillStyle(0xffffff, 1);
+      dotGfx.fillCircle(0, 0, 5);
+      var dotColor = Phaser.Display.Color.HexStringToColor(dim.color || '#2196f3').color;
+      dotGfx.fillStyle(dotColor, 1);
+      dotGfx.fillCircle(0, 0, 3);
+      dotGfx.x = px;
+      dotGfx.y = py;
+      this.addTabElement(dotGfx);
+    }
+  };
+
   proto.createDetailedStats = function(width, height) {
     var stats = this.detailedStats;
     var panelW = 420;
-    var startY = height / 2 - 180;
+    var startY = height / 2 - 70;
 
     var branchCfg = this.getBranchConfig(this.currentBranch);
     var branchName = branchCfg ? branchCfg.name : '主路';
     var branchIcon = branchCfg ? this.getBranchIcon(branchCfg.type) : '🛤️';
 
     var headerY = startY + 10;
-    this.add.text(width / 2 - panelW / 2 + 15, headerY,
+    var headerText = this.add.text(width / 2 - panelW / 2 + 15, headerY,
       branchIcon + ' 最终路线: ' + branchName, {
-        fontSize: '16px',
-        fontWeight: 'bold',
-        color: '#333333'
-      }).setOrigin(0, 0.5);
+      fontSize: '16px',
+      fontWeight: 'bold',
+      color: '#333333'
+    }).setOrigin(0, 0.5);
+    this.addTabElement(headerText);
 
     var rewardMult = branchCfg ? branchCfg.rewardMultiplier : 1.0;
-    this.add.text(width / 2 + panelW / 2 - 15, headerY,
+    var rewardText = this.add.text(width / 2 + panelW / 2 - 15, headerY,
       '奖励倍率 x' + rewardMult.toFixed(1), {
-        fontSize: '14px',
-        fontWeight: 'bold',
-        color: '#ff9800'
-      }).setOrigin(1, 0.5);
+      fontSize: '14px',
+      fontWeight: 'bold',
+      color: '#ff9800'
+    }).setOrigin(1, 0.5);
+    this.addTabElement(rewardText);
 
     var weightBreakdown = stats.weightBreakdown || {};
     if (weightBreakdown.finalMultiplier && weightBreakdown.finalMultiplier > 1.01) {
       var multiplierY = headerY + 28;
-      this.add.text(width / 2 - panelW / 2 + 15, multiplierY,
+      var multText = this.add.text(width / 2 - panelW / 2 + 15, multiplierY,
         '✨ 结算加成: x' + weightBreakdown.finalMultiplier.toFixed(2), {
-          fontSize: '14px',
-          fontWeight: 'bold',
-          color: '#ff6b35'
-        }).setOrigin(0, 0.5);
+        fontSize: '14px',
+        fontWeight: 'bold',
+        color: '#ff6b35'
+      }).setOrigin(0, 0.5);
+      this.addTabElement(multText);
 
       this.createWeightVisualization(width, multiplierY + 25, panelW, weightBreakdown);
     }
@@ -234,11 +892,12 @@
       scoreBreakdownY = headerY + 35;
     }
 
-    this.add.text(width / 2 - panelW / 2 + 15, scoreBreakdownY, '📊 得分明细', {
+    var scoreLabel = this.add.text(width / 2 - panelW / 2 + 15, scoreBreakdownY, '📊 得分明细', {
       fontSize: '14px',
       fontWeight: 'bold',
       color: '#666666'
     }).setOrigin(0, 0.5);
+    this.addTabElement(scoreLabel);
 
     var bonus = stats.bonusScores || {};
     var breakdownItems = [
@@ -273,26 +932,30 @@
       var barBg = this.add.graphics();
       barBg.fillStyle(0xf0f0f0, 1);
       barBg.fillRoundedRect(width / 2 - panelW / 2 + 15, y - 7, panelW - 30, 16, 4);
+      this.addTabElement(barBg);
 
       var ratio = this.score > 0 ? item.value / this.score : 0;
       var barWidth = Math.max(4, (panelW - 30) * ratio);
       var bar = this.add.graphics();
       bar.fillStyle(item.color, 0.8);
       bar.fillRoundedRect(width / 2 - panelW / 2 + 15, y - 7, barWidth, 16, 4);
+      this.addTabElement(bar);
 
-      this.add.text(width / 2 - panelW / 2 + 22, y, item.label, {
+      var barLabel = this.add.text(width / 2 - panelW / 2 + 22, y, item.label, {
         fontSize: '10px',
         fontWeight: 'bold',
         color: '#ffffff',
         stroke: '#000000',
         strokeThickness: 2
       }).setOrigin(0, 0.5);
+      this.addTabElement(barLabel);
 
-      this.add.text(width / 2 + panelW / 2 - 22, y, '+' + item.value, {
+      var barValue = this.add.text(width / 2 + panelW / 2 - 22, y, '+' + item.value, {
         fontSize: '10px',
         fontWeight: 'bold',
         color: '#333333'
       }).setOrigin(1, 0.5);
+      this.addTabElement(barValue);
     }
 
     var totalY = scoreBreakdownY + 28 + visibleItems.length * 20 + 10;
@@ -302,18 +965,21 @@
     totalLine.moveTo(width / 2 - panelW / 2 + 15, totalY);
     totalLine.lineTo(width / 2 + panelW / 2 - 15, totalY);
     totalLine.strokePath();
+    this.addTabElement(totalLine);
 
-    this.add.text(width / 2 - panelW / 2 + 15, totalY + 18, '总分', {
+    var totalLabel = this.add.text(width / 2 - panelW / 2 + 15, totalY + 18, '总分', {
       fontSize: '20px',
       fontWeight: 'bold',
       color: '#333333'
     }).setOrigin(0, 0.5);
+    this.addTabElement(totalLabel);
 
-    this.add.text(width / 2 + panelW / 2 - 15, totalY + 18, this.score.toString(), {
+    var totalValue = this.add.text(width / 2 + panelW / 2 - 15, totalY + 18, this.score.toString(), {
       fontSize: '26px',
       fontWeight: 'bold',
       color: '#ff6b35'
     }).setOrigin(1, 0.5);
+    this.addTabElement(totalValue);
 
     var extraStatsY = totalY + 45;
     var comboInfo = stats.comboInfo || {};
@@ -331,25 +997,29 @@
       var statBg = this.add.graphics();
       statBg.fillStyle(0xf8f8f8, 1);
       statBg.fillRoundedRect(ex, extraStatsY, panelW / 4 - 5, 48, 6);
+      this.addTabElement(statBg);
 
-      this.add.text(ex + (panelW / 4 - 5) / 2, extraStatsY + 14, es.icon, {
+      var statIcon = this.add.text(ex + (panelW / 4 - 5) / 2, extraStatsY + 14, es.icon, {
         fontSize: '16px'
       }).setOrigin(0.5);
+      this.addTabElement(statIcon);
 
-      this.add.text(ex + (panelW / 4 - 5) / 2, extraStatsY + 34, es.value, {
+      var statValue = this.add.text(ex + (panelW / 4 - 5) / 2, extraStatsY + 34, es.value, {
         fontSize: '10px',
         fontWeight: 'bold',
         color: '#333333'
       }).setOrigin(0.5);
+      this.addTabElement(statValue);
     }
 
     if (stats.branches && Object.keys(stats.branches).length > 1) {
       var branchesY = extraStatsY + 65;
-      this.add.text(width / 2 - panelW / 2 + 15, branchesY, '🗺️ 路线探索进度', {
+      var branchLabel = this.add.text(width / 2 - panelW / 2 + 15, branchesY, '🗺️ 路线探索进度', {
         fontSize: '13px',
         fontWeight: 'bold',
         color: '#666666'
       }).setOrigin(0, 0.5);
+      this.addTabElement(branchLabel);
 
       var totalBranches = weightBreakdown.totalBranches || Object.keys(stats.branches).length;
       var exploredCount = weightBreakdown.uniqueBranches || Object.keys(stats.branches).length;
@@ -358,13 +1028,15 @@
       var progBg = this.add.graphics();
       progBg.fillStyle(0xf0f0f0, 1);
       progBg.fillRoundedRect(width / 2 - panelW / 2 + 15, branchesY + 18, panelW - 30, 12, 6);
+      this.addTabElement(progBg);
 
       var progWidth = (panelW - 30) * progressRatio;
       var progBar = this.add.graphics();
       progBar.fillGradientStyle(0x4caf50, 0x8bc34a, 0x4caf50, 0x8bc34a);
       progBar.fillRoundedRect(width / 2 - panelW / 2 + 15, branchesY + 18, progWidth, 12, 6);
+      this.addTabElement(progBar);
 
-      this.add.text(width / 2, branchesY + 24,
+      var progText = this.add.text(width / 2, branchesY + 24,
         exploredCount + ' / ' + totalBranches + ' 条路线 (' + Math.floor(progressRatio * 100) + '%)', {
           fontSize: '10px',
           fontWeight: 'bold',
@@ -372,6 +1044,7 @@
           stroke: '#000000',
           strokeThickness: 2
         }).setOrigin(0.5, 0.5);
+      this.addTabElement(progText);
 
       var branchIds = Object.keys(stats.branches);
       for (var k = 0; k < branchIds.length; k++) {
@@ -386,13 +1059,15 @@
         var dot = this.add.graphics();
         dot.fillStyle(bcolor, 1);
         dot.fillCircle(width / 2 - panelW / 2 + 20, by, 5);
+        this.addTabElement(dot);
 
         var displayName = bname + (bisHidden ? ' ✨' : '');
-        this.add.text(width / 2 - panelW / 2 + 32, by, displayName + ': ' + bdist + 'm', {
+        var branchDetail = this.add.text(width / 2 - panelW / 2 + 32, by, displayName + ': ' + bdist + 'm', {
           fontSize: '10px',
           color: '#555555',
           fontWeight: bisHidden ? 'bold' : 'normal'
         }).setOrigin(0, 0.5);
+        this.addTabElement(branchDetail);
       }
     }
 
@@ -402,11 +1077,12 @@
         comboSectionY = extraStatsY + 65 + (Object.keys(stats.branches).length + 1) * 18 + 20;
       }
 
-      this.add.text(width / 2 - panelW / 2 + 15, comboSectionY, '🔥 连击系统明细', {
+      var comboLabel = this.add.text(width / 2 - panelW / 2 + 15, comboSectionY, '🔥 连击系统明细', {
         fontSize: '13px',
         fontWeight: 'bold',
         color: '#ff5722'
       }).setOrigin(0, 0.5);
+      this.addTabElement(comboLabel);
 
       var comboItems = [
         { label: '最高连击', value: comboInfo.maxCombo + ' 次', icon: '🔥' },
@@ -417,31 +1093,35 @@
 
       for (var ci = 0; ci < comboItems.length; ci++) {
         var cItem = comboItems[ci];
-        var cx = width / 2 - panelW / 2 + 15 + ci * (panelW / 4);
+        var ccx = width / 2 - panelW / 2 + 15 + ci * (panelW / 4);
 
         var cBg = this.add.graphics();
         cBg.fillStyle(0xfff3e0, 1);
-        cBg.fillRoundedRect(cx, comboSectionY + 18, panelW / 4 - 5, 40, 6);
+        cBg.fillRoundedRect(ccx, comboSectionY + 18, panelW / 4 - 5, 40, 6);
         cBg.lineStyle(1, 0xff5722, 0.3);
-        cBg.strokeRoundedRect(cx, comboSectionY + 18, panelW / 4 - 5, 40, 6);
+        cBg.strokeRoundedRect(ccx, comboSectionY + 18, panelW / 4 - 5, 40, 6);
+        this.addTabElement(cBg);
 
-        this.add.text(cx + (panelW / 4 - 5) / 2, comboSectionY + 26, cItem.icon, {
+        var cIcon = this.add.text(ccx + (panelW / 4 - 5) / 2, comboSectionY + 26, cItem.icon, {
           fontSize: '14px'
         }).setOrigin(0.5);
+        this.addTabElement(cIcon);
 
-        this.add.text(cx + (panelW / 4 - 5) / 2, comboSectionY + 44, cItem.value, {
+        var cValue = this.add.text(ccx + (panelW / 4 - 5) / 2, comboSectionY + 44, cItem.value, {
           fontSize: '10px',
           fontWeight: 'bold',
           color: '#ff5722'
         }).setOrigin(0.5);
+        this.addTabElement(cValue);
       }
 
       if (comboInfo.comboHistory && comboInfo.comboHistory.length > 0) {
         var historyY = comboSectionY + 68;
-        this.add.text(width / 2 - panelW / 2 + 15, historyY, '📋 近期连击', {
+        var historyLabel = this.add.text(width / 2 - panelW / 2 + 15, historyY, '📋 近期连击', {
           fontSize: '11px',
           color: '#999999'
         }).setOrigin(0, 0.5);
+        this.addTabElement(historyLabel);
 
         var reasonLabels = {
           'airTime': '🦘 腾空',
@@ -455,24 +1135,77 @@
           var hy = historyY + 18 + hi * 16;
           var reasonLabel = reasonLabels[histEntry.reason] || histEntry.reason;
 
-          this.add.text(width / 2 - panelW / 2 + 25, hy, reasonLabel, {
+          var reasonText = this.add.text(width / 2 - panelW / 2 + 25, hy, reasonLabel, {
             fontSize: '10px',
             color: '#888888'
           }).setOrigin(0, 0.5);
+          this.addTabElement(reasonText);
 
-          this.add.text(width / 2 - panelW / 2 + 100, hy,
+          var comboHistText = this.add.text(width / 2 - panelW / 2 + 100, hy,
             'x' + histEntry.comboCount + ' → +' + histEntry.points, {
             fontSize: '10px',
             fontWeight: 'bold',
             color: '#ff9800'
           }).setOrigin(0, 0.5);
+          this.addTabElement(comboHistText);
 
-          this.add.text(width / 2 + panelW / 2 - 25, hy,
+          var distText = this.add.text(width / 2 + panelW / 2 - 25, hy,
             Math.floor(histEntry.distance) + 'm', {
             fontSize: '10px',
             color: '#bbbbbb'
           }).setOrigin(1, 0.5);
+          this.addTabElement(distText);
         }
+      }
+    }
+
+    if (this.scoreImprovements && this.scoreImprovements.improvements && this.scoreImprovements.improvements.length > 0) {
+      this.createImprovementsSection(width, height, panelW);
+    }
+  };
+
+  proto.createImprovementsSection = function(width, height, panelW) {
+    var improvements = this.scoreImprovements.improvements;
+    var leftX = width / 2 - panelW / 2 + 15;
+    var baseY = height / 2 + 250;
+
+    var impLabel = this.add.text(leftX, baseY, '📈 与上次对比', {
+      fontSize: '12px',
+      fontWeight: 'bold',
+      color: '#4caf50'
+    }).setOrigin(0, 0.5);
+    this.addTabElement(impLabel);
+
+    var maxDisplay = Math.min(improvements.length, 4);
+    for (var i = 0; i < maxDisplay; i++) {
+      var imp = improvements[i];
+      var ix = leftX + i * (panelW / 4);
+      var iy = baseY + 22;
+
+      var impBg = this.add.graphics();
+      var impColor = imp.major ? 0xe8f5e9 : 0xf1f8e9;
+      impBg.fillStyle(impColor, 1);
+      impBg.fillRoundedRect(ix, iy, panelW / 4 - 5, 50, 6);
+      this.addTabElement(impBg);
+
+      var impIcon = this.add.text(ix + (panelW / 4 - 5) / 2, iy + 12, imp.icon, {
+        fontSize: '14px'
+      }).setOrigin(0.5);
+      this.addTabElement(impIcon);
+
+      var impText = this.add.text(ix + (panelW / 4 - 5) / 2, iy + 32, imp.label, {
+        fontSize: '9px',
+        fontWeight: 'bold',
+        color: '#4caf50'
+      }).setOrigin(0.5);
+      this.addTabElement(impText);
+
+      if (!imp.isBoolean) {
+        var impDiff = this.add.text(ix + (panelW / 4 - 5) / 2, iy + 44, '+' + (typeof imp.diff === 'number' ? Math.floor(imp.diff) : imp.diff), {
+          fontSize: '8px',
+          color: '#81c784'
+        }).setOrigin(0.5);
+        this.addTabElement(impDiff);
       }
     }
   };
@@ -481,60 +1214,25 @@
     var weightItems = [];
 
     if (weightBreakdown.riskWeight > 0) {
-      weightItems.push({
-        label: '风险加成',
-        value: weightBreakdown.riskWeight,
-        color: '#f44336',
-        icon: '⚠️'
-      });
+      weightItems.push({ label: '风险加成', value: weightBreakdown.riskWeight, color: '#f44336', icon: '⚠️' });
     }
     if (weightBreakdown.explorationWeight > 0) {
-      weightItems.push({
-        label: '探索加成',
-        value: weightBreakdown.explorationWeight,
-        color: '#00bcd4',
-        icon: '🗺️'
-      });
+      weightItems.push({ label: '探索加成', value: weightBreakdown.explorationWeight, color: '#00bcd4', icon: '🗺️' });
     }
     if (weightBreakdown.perfectWeight > 0) {
-      weightItems.push({
-        label: '完美加成',
-        value: weightBreakdown.perfectWeight,
-        color: '#ffd700',
-        icon: '💯'
-      });
+      weightItems.push({ label: '完美加成', value: weightBreakdown.perfectWeight, color: '#ffd700', icon: '💯' });
     }
     if (weightBreakdown.branchWeight > 0) {
-      weightItems.push({
-        label: '多路线加成',
-        value: weightBreakdown.branchWeight,
-        color: '#9c27b0',
-        icon: '🔀'
-      });
+      weightItems.push({ label: '多路线加成', value: weightBreakdown.branchWeight, color: '#9c27b0', icon: '🔀' });
     }
     if (weightBreakdown.mergeWeight > 0) {
-      weightItems.push({
-        label: '汇合加成',
-        value: weightBreakdown.mergeWeight,
-        color: '#8bc34a',
-        icon: '🔄'
-      });
+      weightItems.push({ label: '汇合加成', value: weightBreakdown.mergeWeight, color: '#8bc34a', icon: '🔄' });
     }
     if (weightBreakdown.hiddenWeight > 0) {
-      weightItems.push({
-        label: '隐藏路线加成',
-        value: weightBreakdown.hiddenWeight,
-        color: '#e91e63',
-        icon: '✨'
-      });
+      weightItems.push({ label: '隐藏路线加成', value: weightBreakdown.hiddenWeight, color: '#e91e63', icon: '✨' });
     }
     if (weightBreakdown.comboWeight > 0) {
-      weightItems.push({
-        label: '连击加成',
-        value: weightBreakdown.comboWeight,
-        color: '#ff5722',
-        icon: '🔥'
-      });
+      weightItems.push({ label: '连击加成', value: weightBreakdown.comboWeight, color: '#ff5722', icon: '🔥' });
     }
 
     if (weightItems.length === 0) return;
@@ -544,6 +1242,7 @@
     container.fillRoundedRect(width / 2 - panelW / 2 + 15, startY, panelW - 30, 22 + weightItems.length * 16, 8);
     container.lineStyle(1, 0xe0e0e0, 1);
     container.strokeRoundedRect(width / 2 - panelW / 2 + 15, startY, panelW - 30, 22 + weightItems.length * 16, 8);
+    this.addTabElement(container);
 
     var maxValue = Math.max.apply(null, weightItems.map(function(w) { return w.value; }));
     var barMaxWidth = panelW - 120;
@@ -552,34 +1251,39 @@
       var item = weightItems[i];
       var y = startY + 12 + i * 16;
 
-      this.add.text(width / 2 - panelW / 2 + 25, y, item.icon, {
+      var wIcon = this.add.text(width / 2 - panelW / 2 + 25, y, item.icon, {
         fontSize: '12px'
       }).setOrigin(0, 0.5);
+      this.addTabElement(wIcon);
 
-      this.add.text(width / 2 - panelW / 2 + 45, y, item.label, {
+      var wLabel = this.add.text(width / 2 - panelW / 2 + 45, y, item.label, {
         fontSize: '10px',
         color: '#666666',
         fontWeight: 'bold'
       }).setOrigin(0, 0.5);
+      this.addTabElement(wLabel);
 
       var ratio = maxValue > 0 ? item.value / maxValue : 0;
       var barWidth = Math.max(4, barMaxWidth * ratio);
       var barX = width / 2 - panelW / 2 + 110;
 
-      var barBg = this.add.graphics();
-      barBg.fillStyle(0xf0f0f0, 1);
-      barBg.fillRoundedRect(barX, y - 5, barMaxWidth, 10, 5);
+      var wBarBg = this.add.graphics();
+      wBarBg.fillStyle(0xf0f0f0, 1);
+      wBarBg.fillRoundedRect(barX, y - 5, barMaxWidth, 10, 5);
+      this.addTabElement(wBarBg);
 
-      var bar = this.add.graphics();
+      var wBar = this.add.graphics();
       var colorNum = Phaser.Display.Color.HexStringToColor(item.color).color;
-      bar.fillStyle(colorNum, 0.85);
-      bar.fillRoundedRect(barX, y - 5, barWidth, 10, 5);
+      wBar.fillStyle(colorNum, 0.85);
+      wBar.fillRoundedRect(barX, y - 5, barWidth, 10, 5);
+      this.addTabElement(wBar);
 
-      this.add.text(barX + barMaxWidth + 5, y, '+' + (item.value * 100).toFixed(0) + '%', {
+      var wPct = this.add.text(barX + barMaxWidth + 5, y, '+' + (item.value * 100).toFixed(0) + '%', {
         fontSize: '10px',
         fontWeight: 'bold',
         color: item.color
       }).setOrigin(0, 0.5);
+      this.addTabElement(wPct);
     }
   };
 
