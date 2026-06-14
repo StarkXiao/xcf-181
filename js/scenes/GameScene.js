@@ -29,8 +29,7 @@
 
     var startX = 80;
     var startY = this.terrain.getHeight(startX) - 60;
-    var selectedCar = MountainRacer.getSelectedCar();
-    this.carPhysics = new MountainRacer.CarPhysics(this, selectedCar);
+    this.carPhysics = new MountainRacer.CarPhysics(this);
     this.carPhysics.create(startX, startY);
 
     this.obstacles = new MountainRacer.Obstacles(this, this.terrain, this.terrain.config);
@@ -63,22 +62,8 @@
     this.comboTextCooldown = 0;
 
     this.lastBreakthroughShown = null;
-    this.lastDamageX = 0;
 
     this.loadUnlockedBranches();
-    this.loadUnlockedAchievements();
-    this.checkAchievementCarUnlocks();
-    this.checkScoreCarUnlocks();
-  };
-
-  proto.loadUnlockedAchievements = function() {
-    try {
-      var key = 'mountain_racer_achievements';
-      var saved = localStorage.getItem(key);
-      this.unlockedAchievements = saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      this.unlockedAchievements = [];
-    }
   };
 
   proto.loadUnlockedBranches = function() {
@@ -398,7 +383,11 @@
       self.scene.restart({ level: self.level });
     }, 240, '🔄');
 
-    this.menuBtn = createBtn('返回菜单', btnY + gap * 3, 0x9e9e9e, function() {
+    this.layoutBtn = createBtn('按键布局', btnY + gap * 3, 0x2196f3, function() {
+      self.showButtonLayoutEditor();
+    }, 240, '🎮');
+
+    this.menuBtn = createBtn('返回菜单', btnY + gap * 4, 0x9e9e9e, function() {
       self.cleanup();
       self.scene.start('MenuScene');
     }, 240, '🏠');
@@ -863,6 +852,1005 @@
     }
   };
 
+  proto.showButtonLayoutEditor = function() {
+    var width = this.scale.width;
+    var height = this.scale.height;
+    var self = this;
+
+    this.layoutEditorOpen = true;
+    this.layoutEditorElements = [];
+    this.selectedButtonAction = null;
+
+    if (this.pauseOverlay) this.pauseOverlay.setDepth(2500);
+    if (this.pausePanel) this.pausePanel.setDepth(2500);
+
+    var panelW = 380;
+    var panelH = 620;
+    var panelX = width / 2 - panelW / 2;
+    var panelY = height / 2 - panelH / 2;
+
+    var editorBg = this.add.graphics();
+    editorBg.fillStyle(0x1a1a2e, 0.98);
+    editorBg.fillRoundedRect(panelX, panelY, panelW, panelH, 20);
+    editorBg.lineStyle(3, 0x2196f3, 1);
+    editorBg.strokeRoundedRect(panelX, panelY, panelW, panelH, 20);
+    editorBg.setScrollFactor(0);
+    editorBg.setDepth(3000);
+    this.layoutEditorElements.push(editorBg);
+
+    var title = this.add.text(width / 2, panelY + 28, '🎮 按键布局编辑', {
+      fontSize: '20px',
+      fontWeight: 'bold',
+      color: '#ffffff'
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(3001);
+    this.layoutEditorElements.push(title);
+
+    var closeBtn = this.createLayoutCloseButton(panelX + panelW - 30, panelY + 28, function() {
+      self.hideButtonLayoutEditor();
+    });
+    closeBtn.setDepth(3001);
+    this.layoutEditorElements.push(closeBtn);
+
+    var lm = this.inputManager.layoutManager;
+    if (!lm) return;
+    var layout = lm.getLayout();
+    var activePreset = lm.getActivePresetName();
+
+    var curY = panelY + 55;
+
+    var editHint = this.add.text(width / 2, curY, '开启编辑模式，拖拽按钮调整位置', {
+      fontSize: '12px',
+      color: '#aaaaaa'
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(3001);
+    this.layoutEditorElements.push(editHint);
+    curY += 22;
+
+    var editBtn = this.createLayoutToggleButton(width / 2, curY, '✏️ 编辑模式', this.inputManager.editMode, function(value) {
+      self.inputManager.setEditMode(value);
+    });
+    editBtn.setDepth(3001);
+    this.layoutEditorElements.push(editBtn);
+    this.layoutEditToggle = editBtn;
+    curY += 40;
+
+    var globalLabel = this.add.text(panelX + 20, curY, '🌐 全局设置', {
+      fontSize: '13px',
+      fontWeight: 'bold',
+      color: '#4fc3f7'
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(3001);
+    this.layoutEditorElements.push(globalLabel);
+    curY += 20;
+
+    var scaleLabel = this.add.text(panelX + 20, curY, '📏 缩放', {
+      fontSize: '12px',
+      color: '#cccccc'
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(3001);
+    this.layoutEditorElements.push(scaleLabel);
+
+    var firstAction = lm.getAllButtonActions()[0];
+    var currentScale = layout[firstAction] ? layout[firstAction].scale : 1.0;
+    var scaleValueText = this.add.text(panelX + panelW - 20, curY, currentScale.toFixed(1) + 'x', {
+      fontSize: '12px',
+      fontWeight: 'bold',
+      color: '#ffffff'
+    }).setOrigin(1, 0.5).setScrollFactor(0).setDepth(3001);
+    this.layoutEditorElements.push(scaleValueText);
+    curY += 16;
+
+    var scaleSlider = this.createSlider(
+      panelX + 20, curY, panelW - 40, currentScale, 0.5, 2.0,
+      function(value) {
+        scaleValueText.setText(value.toFixed(1) + 'x');
+        self.inputManager.applyAllButtonScale(value);
+        if (self.perBtnScaleSlider && self.selectedButtonAction) {
+          var cfg = lm.getButtonConfig(self.selectedButtonAction);
+          if (cfg) {
+            self.perBtnScaleSlider.updateValue(cfg.scale);
+            self.perBtnScaleValue.setText(cfg.scale.toFixed(1) + 'x');
+          }
+        }
+      }
+    );
+    scaleSlider.setDepth(3001);
+    this.layoutEditorElements.push(scaleSlider);
+    curY += 26;
+
+    var opacityLabel = this.add.text(panelX + 20, curY, '👁️ 透明度', {
+      fontSize: '12px',
+      color: '#cccccc'
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(3001);
+    this.layoutEditorElements.push(opacityLabel);
+
+    var currentOpacity = layout[firstAction] ? layout[firstAction].opacity : 0.5;
+    var opacityValueText = this.add.text(panelX + panelW - 20, curY, Math.round(currentOpacity * 100) + '%', {
+      fontSize: '12px',
+      fontWeight: 'bold',
+      color: '#ffffff'
+    }).setOrigin(1, 0.5).setScrollFactor(0).setDepth(3001);
+    this.layoutEditorElements.push(opacityValueText);
+    curY += 16;
+
+    var opacitySlider = this.createSlider(
+      panelX + 20, curY, panelW - 40, currentOpacity, 0.1, 1.0,
+      function(value) {
+        opacityValueText.setText(Math.round(value * 100) + '%');
+        self.inputManager.applyAllButtonOpacity(value);
+        if (self.perBtnOpacitySlider && self.selectedButtonAction) {
+          var cfg2 = lm.getButtonConfig(self.selectedButtonAction);
+          if (cfg2) {
+            self.perBtnOpacitySlider.updateValue(cfg2.opacity);
+            self.perBtnOpacityValue.setText(Math.round(cfg2.opacity * 100) + '%');
+          }
+        }
+      }
+    );
+    opacitySlider.setDepth(3001);
+    this.layoutEditorElements.push(opacitySlider);
+    curY += 32;
+
+    var perBtnLabel = this.add.text(panelX + 20, curY, '🎯 单个按键设置', {
+      fontSize: '13px',
+      fontWeight: 'bold',
+      color: '#ff9800'
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(3001);
+    this.layoutEditorElements.push(perBtnLabel);
+    curY += 20;
+
+    var btnSelectLabel = this.add.text(panelX + 20, curY, '选择按键:', {
+      fontSize: '12px',
+      color: '#cccccc'
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(3001);
+    this.layoutEditorElements.push(btnSelectLabel);
+    curY += 22;
+
+    var allActions = lm.getAllButtonActions();
+    this.perBtnSelectButtons = [];
+    var perBtnSelStartX = panelX + 20;
+    var perBtnSelWidth = (panelW - 40 - (allActions.length - 1) * 6) / allActions.length;
+
+    var perBtnScaleSlider = null;
+    var perBtnScaleValue = null;
+    var perBtnOpacitySlider = null;
+    var perBtnOpacityValue = null;
+
+    for (var ai = 0; ai < allActions.length; ai++) {
+      (function(actionIdx) {
+        var action = allActions[actionIdx];
+        var meta = lm.getButtonMeta(action);
+        var bx = perBtnSelStartX + actionIdx * (perBtnSelWidth + 6) + perBtnSelWidth / 2;
+        var isSel = self.selectedButtonAction === action;
+
+        var selBtn = self.createPerBtnSelectButton(bx, curY, perBtnSelWidth, meta, action, isSel, function(act) {
+          self.selectedButtonAction = act;
+          for (var k = 0; k < self.perBtnSelectButtons.length; k++) {
+            self.perBtnSelectButtons[k].updateSelected(self.perBtnSelectButtons[k].action === act);
+          }
+          var btnCfg = lm.getButtonConfig(act);
+          if (btnCfg && perBtnScaleSlider && perBtnScaleValue && perBtnOpacitySlider && perBtnOpacityValue) {
+            perBtnScaleSlider.updateValue(btnCfg.scale);
+            perBtnScaleValue.setText(btnCfg.scale.toFixed(1) + 'x');
+            perBtnOpacitySlider.updateValue(btnCfg.opacity);
+            perBtnOpacityValue.setText(Math.round(btnCfg.opacity * 100) + '%');
+          }
+        });
+        selBtn.setDepth(3001);
+        self.layoutEditorElements.push(selBtn);
+        self.perBtnSelectButtons.push(selBtn);
+      })(ai);
+    }
+
+    if (allActions.length > 0) {
+      this.selectedButtonAction = allActions[0];
+    }
+    curY += 30;
+
+    var selCfg = this.selectedButtonAction ? lm.getButtonConfig(this.selectedButtonAction) : null;
+
+    var pScaleLabel = this.add.text(panelX + 20, curY, '📏 按键缩放', {
+      fontSize: '12px',
+      color: '#cccccc'
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(3001);
+    this.layoutEditorElements.push(pScaleLabel);
+
+    perBtnScaleValue = this.add.text(panelX + panelW - 20, curY, (selCfg ? selCfg.scale : 1.0).toFixed(1) + 'x', {
+      fontSize: '12px',
+      fontWeight: 'bold',
+      color: '#ffffff'
+    }).setOrigin(1, 0.5).setScrollFactor(0).setDepth(3001);
+    this.layoutEditorElements.push(perBtnScaleValue);
+    this.perBtnScaleValue = perBtnScaleValue;
+    curY += 16;
+
+    perBtnScaleSlider = this.createSlider(
+      panelX + 20, curY, panelW - 40, selCfg ? selCfg.scale : 1.0, 0.5, 2.0,
+      function(value) {
+        perBtnScaleValue.setText(value.toFixed(1) + 'x');
+        if (self.selectedButtonAction) {
+          self.inputManager.applyButtonScale(self.selectedButtonAction, value);
+        }
+      }
+    );
+    perBtnScaleSlider.setDepth(3001);
+    this.layoutEditorElements.push(perBtnScaleSlider);
+    this.perBtnScaleSlider = perBtnScaleSlider;
+    curY += 26;
+
+    var pOpLabel = this.add.text(panelX + 20, curY, '👁️ 按键透明度', {
+      fontSize: '12px',
+      color: '#cccccc'
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(3001);
+    this.layoutEditorElements.push(pOpLabel);
+
+    perBtnOpacityValue = this.add.text(panelX + panelW - 20, curY, Math.round((selCfg ? selCfg.opacity : 0.5) * 100) + '%', {
+      fontSize: '12px',
+      fontWeight: 'bold',
+      color: '#ffffff'
+    }).setOrigin(1, 0.5).setScrollFactor(0).setDepth(3001);
+    this.layoutEditorElements.push(perBtnOpacityValue);
+    this.perBtnOpacityValue = perBtnOpacityValue;
+    curY += 16;
+
+    perBtnOpacitySlider = this.createSlider(
+      panelX + 20, curY, panelW - 40, selCfg ? selCfg.opacity : 0.5, 0.1, 1.0,
+      function(value) {
+        perBtnOpacityValue.setText(Math.round(value * 100) + '%');
+        if (self.selectedButtonAction) {
+          self.inputManager.applyButtonOpacity(self.selectedButtonAction, value);
+        }
+      }
+    );
+    perBtnOpacitySlider.setDepth(3001);
+    this.layoutEditorElements.push(perBtnOpacitySlider);
+    this.perBtnOpacitySlider = perBtnOpacitySlider;
+    curY += 30;
+
+    var presetLabel = this.add.text(panelX + 20, curY, '📂 预设方案', {
+      fontSize: '13px',
+      fontWeight: 'bold',
+      color: '#4fc3f7'
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(3001);
+    this.layoutEditorElements.push(presetLabel);
+    curY += 20;
+
+    var presets = lm.getPresetList();
+    var presetBtnWidth = Math.min(72, (panelW - 40 - 3 * 6) / 4);
+    var maxCols = 4;
+    var presetStartX = width / 2 - (Math.min(presets.length, maxCols) * (presetBtnWidth + 6)) / 2 + presetBtnWidth / 2;
+
+    this.layoutPresetButtons = [];
+    for (var pi = 0; pi < presets.length; pi++) {
+      (function(index) {
+        var preset = presets[index];
+        var col = index % maxCols;
+        var row = Math.floor(index / maxCols);
+        var px = presetStartX + col * (presetBtnWidth + 6);
+        var py = curY + row * 34;
+        var isActive = preset.isActive;
+
+        var btn = self.createPresetButton(px, py, presetBtnWidth, preset, isActive, function(presetName) {
+          self.inputManager.applyPreset(presetName);
+          self.updatePresetButtons(presetName);
+          var newLayout = lm.getLayout();
+          var newFirst = lm.getAllButtonActions()[0];
+          if (newLayout[newFirst]) {
+            scaleSlider.updateValue(newLayout[newFirst].scale);
+            scaleValueText.setText(newLayout[newFirst].scale.toFixed(1) + 'x');
+            opacitySlider.updateValue(newLayout[newFirst].opacity);
+            opacityValueText.setText(Math.round(newLayout[newFirst].opacity * 100) + '%');
+            if (self.selectedButtonAction && newLayout[self.selectedButtonAction]) {
+              perBtnScaleSlider.updateValue(newLayout[self.selectedButtonAction].scale);
+              perBtnScaleValue.setText(newLayout[self.selectedButtonAction].scale.toFixed(1) + 'x');
+              perBtnOpacitySlider.updateValue(newLayout[self.selectedButtonAction].opacity);
+              perBtnOpacityValue.setText(Math.round(newLayout[self.selectedButtonAction].opacity * 100) + '%');
+            }
+          }
+        });
+        btn.setDepth(3001);
+        self.layoutEditorElements.push(btn);
+        self.layoutPresetButtons.push({ btn: btn, name: preset.name });
+      })(pi);
+    }
+
+    var presetRows = Math.ceil(presets.length / maxCols);
+    curY += presetRows * 34 + 10;
+
+    var sceneLabel = this.add.text(panelX + 20, curY, '🏷️ 场景方案', {
+      fontSize: '13px',
+      fontWeight: 'bold',
+      color: '#4fc3f7'
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(3001);
+    this.layoutEditorElements.push(sceneLabel);
+    curY += 20;
+
+    var sceneTypes = [
+      { id: 'racing', label: '🏎️ 竞速' },
+      { id: 'exploration', label: '🗺️ 探索' }
+    ];
+
+    this.sceneButtons = [];
+    for (var si = 0; si < sceneTypes.length; si++) {
+      (function(idx) {
+        var st = sceneTypes[idx];
+        var baseX = panelX + 20 + idx * 170;
+
+        var saveSceneBtn = self.createSceneActionButton(baseX, curY, 78, st.label + '保存', 0x4caf50, function(sceneType) {
+          lm.saveScenePreset(sceneType);
+          self.showFloatingText(self.cameras.main.midPoint.x, self.cameras.main.midPoint.y - 50, '✅ 已保存到' + st.label + '场景', 0x4caf50);
+        }, st.id);
+        saveSceneBtn.setDepth(3001);
+        self.layoutEditorElements.push(saveSceneBtn);
+        self.sceneButtons.push(saveSceneBtn);
+
+        var loadSceneBtn = self.createSceneActionButton(baseX + 84, curY, 78, st.label + '加载', 0x2196f3, function(sceneType) {
+          var loaded = lm.loadScenePreset(sceneType);
+          if (loaded) {
+            self.inputManager.rebuildTouchControls();
+            var newLayout2 = lm.getLayout();
+            var newFirst2 = lm.getAllButtonActions()[0];
+            if (newLayout2[newFirst2]) {
+              scaleSlider.updateValue(newLayout2[newFirst2].scale);
+              scaleValueText.setText(newLayout2[newFirst2].scale.toFixed(1) + 'x');
+              opacitySlider.updateValue(newLayout2[newFirst2].opacity);
+              opacityValueText.setText(Math.round(newLayout2[newFirst2].opacity * 100) + '%');
+              if (self.selectedButtonAction && newLayout2[self.selectedButtonAction]) {
+                perBtnScaleSlider.updateValue(newLayout2[self.selectedButtonAction].scale);
+                perBtnScaleValue.setText(newLayout2[self.selectedButtonAction].scale.toFixed(1) + 'x');
+                perBtnOpacitySlider.updateValue(newLayout2[self.selectedButtonAction].opacity);
+                perBtnOpacityValue.setText(Math.round(newLayout2[self.selectedButtonAction].opacity * 100) + '%');
+              }
+            }
+            self.updatePresetButtons(lm.getActivePresetName());
+            self.showFloatingText(self.cameras.main.midPoint.x, self.cameras.main.midPoint.y - 50, '✅ 已加载' + st.label + '方案', 0x2196f3);
+          } else {
+            self.showFloatingText(self.cameras.main.midPoint.x, self.cameras.main.midPoint.y - 50, '⚠️ 该场景暂无保存方案', 0xff9800);
+          }
+        }, st.id);
+        loadSceneBtn.setDepth(3001);
+        self.layoutEditorElements.push(loadSceneBtn);
+        self.sceneButtons.push(loadSceneBtn);
+      })(si);
+    }
+    curY += 36;
+
+    var deleteBtn = this.createSettingsButton(
+      panelX + 25,
+      panelY + panelH - 45,
+      100,
+      '🗑️ 删除',
+      0xf44336,
+      function() {
+        var curPreset = lm.getActivePresetName();
+        if (curPreset === '默认') {
+          self.showFloatingText(self.cameras.main.midPoint.x, self.cameras.main.midPoint.y - 50, '⚠️ 不能删除默认方案', 0xff9800);
+          return;
+        }
+        if (confirm('确定要删除方案 "' + curPreset + '" 吗？')) {
+          lm.deletePreset(curPreset);
+          self.inputManager.rebuildTouchControls();
+          self.hideButtonLayoutEditor();
+          self.showButtonLayoutEditor();
+        }
+      }
+    );
+    deleteBtn.setDepth(3001);
+    this.layoutEditorElements.push(deleteBtn);
+
+    var resetBtn = this.createSettingsButton(
+      panelX + panelW / 2,
+      panelY + panelH - 45,
+      100,
+      '↩️ 重置',
+      0xff9800,
+      function() {
+        if (confirm('确定要重置为默认布局吗？')) {
+          lm.resetToDefault();
+          self.inputManager.rebuildTouchControls();
+          var resetLayout = lm.getLayout();
+          var resetFirst = lm.getAllButtonActions()[0];
+          if (resetLayout[resetFirst]) {
+            scaleSlider.updateValue(resetLayout[resetFirst].scale);
+            scaleValueText.setText(resetLayout[resetFirst].scale.toFixed(1) + 'x');
+            opacitySlider.updateValue(resetLayout[resetFirst].opacity);
+            opacityValueText.setText(Math.round(resetLayout[resetFirst].opacity * 100) + '%');
+            if (self.selectedButtonAction && resetLayout[self.selectedButtonAction]) {
+              perBtnScaleSlider.updateValue(resetLayout[self.selectedButtonAction].scale);
+              perBtnScaleValue.setText(resetLayout[self.selectedButtonAction].scale.toFixed(1) + 'x');
+              perBtnOpacitySlider.updateValue(resetLayout[self.selectedButtonAction].opacity);
+              perBtnOpacityValue.setText(Math.round(resetLayout[self.selectedButtonAction].opacity * 100) + '%');
+            }
+          }
+        }
+      }
+    );
+    resetBtn.setDepth(3001);
+    this.layoutEditorElements.push(resetBtn);
+
+    var saveNewBtn = this.createSettingsButton(
+      panelX + panelW - 25,
+      panelY + panelH - 45,
+      100,
+      '💾 保存',
+      0x4caf50,
+      function() {
+        self.showSavePresetDialog();
+      }
+    );
+    saveNewBtn.setDepth(3001);
+    this.layoutEditorElements.push(saveNewBtn);
+  };
+
+  proto.createLayoutToggleButton = function(x, y, label, initialValue, onChange) {
+    var container = this.add.container(x, y);
+    container.setScrollFactor(0);
+    container.setSize(260, 30);
+
+    var bg = this.add.graphics();
+    var value = initialValue;
+
+    var updateVisual = function() {
+      bg.clear();
+      bg.fillStyle(value ? 0x4caf50 : 0x555555, 1);
+      bg.fillRoundedRect(-130, -15, 260, 30, 8);
+      if (value) {
+        bg.lineStyle(2, 0x81c784, 0.8);
+      } else {
+        bg.lineStyle(2, 0x777777, 0.5);
+      }
+      bg.strokeRoundedRect(-130, -15, 260, 30, 8);
+    };
+
+    updateVisual();
+    container.add(bg);
+
+    var text = this.add.text(0, 0, label + (value ? ' ✅' : ' ⬜'), {
+      fontSize: '14px',
+      fontWeight: 'bold',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+    container.add(text);
+
+    container.setInteractive(
+      new Phaser.Geom.Rectangle(-130, -15, 260, 30),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    container.on('pointerdown', function() {
+      value = !value;
+      updateVisual();
+      text.setText(label + (value ? ' ✅' : ' ⬜'));
+      if (onChange) onChange(value);
+    });
+
+    container.updateValue = function(newValue) {
+      value = newValue;
+      updateVisual();
+      text.setText(label + (value ? ' ✅' : ' ⬜'));
+    };
+
+    return container;
+  };
+
+  proto.createSlider = function(x, y, width, initialValue, minVal, maxVal, onChange) {
+    var container = this.add.container(x, y);
+    container.setScrollFactor(0);
+    container.setSize(width, 20);
+
+    var trackBg = this.add.graphics();
+    trackBg.fillStyle(0x333333, 1);
+    trackBg.fillRoundedRect(0, 6, width, 8, 4);
+    container.add(trackBg);
+
+    var trackFill = this.add.graphics();
+    container.add(trackFill);
+
+    var handle = this.add.graphics();
+    container.add(handle);
+
+    var self = this;
+    var value = initialValue;
+    var dragging = false;
+
+    var updateSliderVisual = function() {
+      var ratio = (value - minVal) / (maxVal - minVal);
+      var fillW = Math.max(4, ratio * width);
+      trackFill.clear();
+      trackFill.fillStyle(0x2196f3, 1);
+      trackFill.fillRoundedRect(0, 6, fillW, 8, 4);
+
+      handle.clear();
+      handle.fillStyle(0xffffff, 1);
+      handle.fillCircle(fillW, 10, 8);
+      handle.lineStyle(2, 0x2196f3, 1);
+      handle.strokeCircle(fillW, 10, 8);
+    };
+
+    updateSliderVisual();
+
+    container.setInteractive(
+      new Phaser.Geom.Rectangle(0, 0, width, 20),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    var handlePointer = function(pointerX) {
+      var localX = pointerX - x;
+      var ratio = Math.max(0, Math.min(1, localX / width));
+      value = minVal + ratio * (maxVal - minVal);
+      value = Math.round(value * 100) / 100;
+      updateSliderVisual();
+      if (onChange) onChange(value);
+    };
+
+    container.on('pointerdown', function(pointer) {
+      dragging = true;
+      handlePointer(pointer.x);
+    });
+
+    self.input.on('pointermove', function(pointer) {
+      if (dragging) {
+        handlePointer(pointer.x);
+      }
+    });
+
+    self.input.on('pointerup', function() {
+      dragging = false;
+    });
+
+    container.updateValue = function(newValue) {
+      value = Math.max(minVal, Math.min(maxVal, newValue));
+      updateSliderVisual();
+    };
+
+    return container;
+  };
+
+  proto.createPresetButton = function(x, y, btnWidth, preset, isActive, onClick) {
+    var container = this.add.container(x, y);
+    container.setScrollFactor(0);
+    container.setSize(btnWidth, 32);
+
+    var bg = this.add.graphics();
+    var updateVisual = function(active) {
+      bg.clear();
+      if (active) {
+        bg.fillStyle(0x2196f3, 1);
+      } else {
+        bg.fillStyle(0x333333, 1);
+      }
+      bg.fillRoundedRect(-btnWidth / 2, -16, btnWidth, 32, 6);
+      bg.lineStyle(1, active ? 0x64b5f6 : 0x555555, 1);
+      bg.strokeRoundedRect(-btnWidth / 2, -16, btnWidth, 32, 6);
+    };
+
+    updateVisual(isActive);
+    container.add(bg);
+
+    var label = this.add.text(0, 0, preset.icon + ' ' + preset.name, {
+      fontSize: '11px',
+      fontWeight: 'bold',
+      color: isActive ? '#ffffff' : '#cccccc'
+    }).setOrigin(0.5);
+    container.add(label);
+
+    container.setInteractive(
+      new Phaser.Geom.Rectangle(-btnWidth / 2, -16, btnWidth, 32),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    container.on('pointerdown', function() {
+      onClick(preset.name);
+    });
+
+    container.setActiveState = function(active) {
+      updateVisual(active);
+      label.setColor(active ? '#ffffff' : '#cccccc');
+    };
+
+    return container;
+  };
+
+  proto.createLayoutCloseButton = function(x, y, onClick) {
+    var container = this.add.container(x, y);
+    container.setScrollFactor(0);
+    container.setSize(32, 32);
+
+    var bg = this.add.graphics();
+    bg.fillStyle(0x333333, 0.8);
+    bg.fillCircle(0, 0, 14);
+    bg.lineStyle(2, 0x666666, 0.8);
+    bg.strokeCircle(0, 0, 14);
+    container.add(bg);
+
+    var label = this.add.text(0, 0, '✕', {
+      fontSize: '16px',
+      fontWeight: 'bold',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+    container.add(label);
+
+    container.setInteractive(
+      new Phaser.Geom.Circle(0, 0, 14),
+      Phaser.Geom.Circle.Contains
+    );
+
+    container.on('pointerover', function() { bg.fillStyle(0xf44336, 0.9); bg.clear(); bg.fillCircle(0, 0, 14); bg.lineStyle(2, 0xff6b6b, 0.9); bg.strokeCircle(0, 0, 14); });
+    container.on('pointerout', function() { bg.fillStyle(0x333333, 0.8); bg.clear(); bg.fillCircle(0, 0, 14); bg.lineStyle(2, 0x666666, 0.8); bg.strokeCircle(0, 0, 14); });
+    container.on('pointerdown', function() {
+      container.setScale(0.9);
+      setTimeout(function() {
+        container.setScale(1);
+        onClick();
+      }, 80);
+    });
+
+    return container;
+  };
+
+  proto.createPerBtnSelectButton = function(x, y, btnWidth, meta, action, isSelected, onClick) {
+    var container = this.add.container(x, y);
+    container.setScrollFactor(0);
+    container.setSize(btnWidth, 32);
+    container.action = action;
+
+    var bg = this.add.graphics();
+    var updateVisual = function(selected) {
+      bg.clear();
+      if (selected) {
+        bg.fillStyle(meta ? meta.color : 0x2196f3, 1);
+        bg.fillRoundedRect(-btnWidth / 2, -16, btnWidth, 32, 8);
+        bg.lineStyle(2, 0xffffff, 0.6);
+        bg.strokeRoundedRect(-btnWidth / 2, -16, btnWidth, 32, 8);
+      } else {
+        bg.fillStyle(0x333333, 1);
+        bg.fillRoundedRect(-btnWidth / 2, -16, btnWidth, 32, 8);
+        bg.lineStyle(1, (meta ? meta.color : 0x555555), 0.6);
+        bg.strokeRoundedRect(-btnWidth / 2, -16, btnWidth, 32, 8);
+      }
+    };
+    updateVisual(isSelected);
+    container.add(bg);
+
+    var icon = this.add.text(0, 0, meta ? meta.label : '?', {
+      fontSize: '16px',
+      fontWeight: 'bold',
+      color: isSelected ? '#ffffff' : '#cccccc'
+    }).setOrigin(0.5);
+    container.add(icon);
+
+    container.setInteractive(
+      new Phaser.Geom.Rectangle(-btnWidth / 2, -16, btnWidth, 32),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    container.on('pointerdown', function() {
+      onClick(action);
+    });
+
+    container.updateSelected = function(selected) {
+      updateVisual(selected);
+      icon.setColor(selected ? '#ffffff' : '#cccccc');
+    };
+
+    return container;
+  };
+
+  proto.createSceneActionButton = function(x, y, btnWidth, labelText, color, onClick, sceneType) {
+    var container = this.add.container(x + btnWidth / 2, y + 14);
+    container.setScrollFactor(0);
+    container.setSize(btnWidth, 28);
+
+    var bg = this.add.graphics();
+    bg.fillStyle(color, 0.9);
+    bg.fillRoundedRect(-btnWidth / 2, -14, btnWidth, 28, 6);
+    bg.lineStyle(1, 0xffffff, 0.3);
+    bg.strokeRoundedRect(-btnWidth / 2, -14, btnWidth, 28, 6);
+    container.add(bg);
+
+    var label = this.add.text(0, 0, labelText, {
+      fontSize: '11px',
+      fontWeight: 'bold',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+    container.add(label);
+
+    container.setInteractive(
+      new Phaser.Geom.Rectangle(-btnWidth / 2, -14, btnWidth, 28),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    container.on('pointerover', function() { container.setScale(1.04); });
+    container.on('pointerout', function() { container.setScale(1); });
+    container.on('pointerdown', function() {
+      container.setScale(0.96);
+      setTimeout(function() {
+        container.setScale(1);
+        onClick(sceneType);
+      }, 80);
+    });
+
+    return container;
+  };
+
+  proto.createScenePresetButton = function(x, y, btnWidth, sceneType, onClick) {
+    var container = this.add.container(x + btnWidth / 2, y + 12);
+    container.setScrollFactor(0);
+    container.setSize(btnWidth, 28);
+
+    var bg = this.add.graphics();
+    bg.fillStyle(0xff9800, 0.8);
+    bg.fillRoundedRect(-btnWidth / 2, -14, btnWidth, 28, 6);
+    bg.lineStyle(1, 0xffb74d, 0.8);
+    bg.strokeRoundedRect(-btnWidth / 2, -14, btnWidth, 28, 6);
+    container.add(bg);
+
+    var label = this.add.text(0, 0, sceneType.label, {
+      fontSize: '12px',
+      fontWeight: 'bold',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+    container.add(label);
+
+    container.setInteractive(
+      new Phaser.Geom.Rectangle(-btnWidth / 2, -14, btnWidth, 28),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    container.on('pointerdown', function() {
+      onClick(sceneType.id);
+    });
+
+    return container;
+  };
+
+  proto.updatePresetButtons = function(activeName) {
+    if (!this.layoutPresetButtons) return;
+    for (var i = 0; i < this.layoutPresetButtons.length; i++) {
+      var item = this.layoutPresetButtons[i];
+      item.btn.setActiveState(item.name === activeName);
+    }
+  };
+
+  proto.showSavePresetDialog = function() {
+    var width = this.scale.width;
+    var height = this.scale.height;
+    var self = this;
+
+    if (this.saveDialogElements) {
+      this.destroySaveDialog();
+    }
+    this.saveDialogElements = [];
+
+    var dialogBg = this.add.graphics();
+    dialogBg.fillStyle(0x0d1b2a, 0.95);
+    dialogBg.fillRoundedRect(width / 2 - 170, height / 2 - 120, 340, 240, 16);
+    dialogBg.lineStyle(2, 0xffd700, 1);
+    dialogBg.strokeRoundedRect(width / 2 - 170, height / 2 - 120, 340, 240, 16);
+    dialogBg.setScrollFactor(0);
+    dialogBg.setDepth(3100);
+    this.saveDialogElements.push(dialogBg);
+
+    var title = this.add.text(width / 2, height / 2 - 95, '💾 保存方案', {
+      fontSize: '18px',
+      fontWeight: 'bold',
+      color: '#ffd700'
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(3101);
+    this.saveDialogElements.push(title);
+
+    var nameLabel = this.add.text(width / 2 - 150, height / 2 - 65, '方案名称:', {
+      fontSize: '12px',
+      color: '#aaaaaa'
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(3101);
+    this.saveDialogElements.push(nameLabel);
+
+    var inputBg = this.add.graphics();
+    inputBg.fillStyle(0x1a1a2e, 1);
+    inputBg.fillRoundedRect(width / 2 - 150, height / 2 - 45, 300, 40, 8);
+    inputBg.lineStyle(1, 0x4fc3f7, 0.8);
+    inputBg.strokeRoundedRect(width / 2 - 150, height / 2 - 45, 300, 40, 8);
+    inputBg.setScrollFactor(0);
+    inputBg.setDepth(3101);
+    this.saveDialogElements.push(inputBg);
+
+    var presetName = '我的方案';
+    var inputText = this.add.text(width / 2 - 140, height / 2 - 25, presetName, {
+      fontSize: '16px',
+      color: '#ffffff'
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(3102);
+    this.saveDialogElements.push(inputText);
+
+    var cursor = this.add.text(width / 2 - 140 + inputText.width, height / 2 - 25, '|', {
+      fontSize: '18px',
+      color: '#4fc3f7'
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(3102);
+    this.saveDialogElements.push(cursor);
+
+    this.tweens.add({
+      targets: cursor,
+      alpha: { from: 1, to: 0 },
+      duration: 500,
+      yoyo: true,
+      repeat: -1
+    });
+
+    var lm = this.inputManager.layoutManager;
+
+    var sceneLabel = this.add.text(width / 2 - 150, height / 2 + 5, '适用场景:', {
+      fontSize: '12px',
+      color: '#aaaaaa'
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(3101);
+    this.saveDialogElements.push(sceneLabel);
+
+    var sceneOptions = [
+      { id: 'all', label: '🎮 全部' },
+      { id: 'racing', label: '🏎️ 竞速' },
+      { id: 'exploration', label: '🗺️ 探索' }
+    ];
+    var selectedScene = 'all';
+    this.saveSceneBtns = [];
+
+    for (var oi = 0; oi < sceneOptions.length; oi++) {
+      (function(idx) {
+        var opt = sceneOptions[idx];
+        var ox = width / 2 - 130 + idx * 95;
+        var oy = height / 2 + 35;
+        var isSelected = opt.id === selectedScene;
+
+        var sceneOptBtn = self.add.container(ox, oy);
+        sceneOptBtn.setScrollFactor(0);
+        sceneOptBtn.setSize(85, 28);
+
+        var optBg = self.add.graphics();
+        var updateOptVisual = function(selected) {
+          optBg.clear();
+          optBg.fillStyle(selected ? 0xff9800 : 0x333333, 1);
+          optBg.fillRoundedRect(-42, -14, 85, 28, 6);
+        };
+        updateOptVisual(isSelected);
+        sceneOptBtn.add(optBg);
+
+        var optLabel = self.add.text(0, 0, opt.label, {
+          fontSize: '12px',
+          fontWeight: 'bold',
+          color: isSelected ? '#ffffff' : '#cccccc'
+        }).setOrigin(0.5);
+        sceneOptBtn.add(optLabel);
+
+        sceneOptBtn.setInteractive(
+          new Phaser.Geom.Rectangle(-42, -14, 85, 28),
+          Phaser.Geom.Rectangle.Contains
+        );
+
+        sceneOptBtn.on('pointerdown', function() {
+          selectedScene = opt.id;
+          for (var j = 0; j < self.saveSceneBtns.length; j++) {
+            self.saveSceneBtns[j].updateSelected(sceneOptions[j].id === selectedScene);
+          }
+        });
+
+        sceneOptBtn.setDepth(3102);
+        self.saveDialogElements.push(sceneOptBtn);
+
+        sceneOptBtn.updateSelected = function(selected) {
+          updateOptVisual(selected);
+          optLabel.setColor(selected ? '#ffffff' : '#cccccc');
+        };
+
+        self.saveSceneBtns.push(sceneOptBtn);
+      })(oi);
+    }
+
+    var confirmBtn = this.createSettingsButton(
+      width / 2 - 80,
+      height / 2 + 85,
+      130,
+      '✅ 保存',
+      0x4caf50,
+      function() {
+        var trimmedName = presetName.trim();
+        if (trimmedName !== '') {
+          var icon = selectedScene === 'racing' ? '🏎️' : selectedScene === 'exploration' ? '🗺️' : '🎮';
+          lm.saveCurrentAsPreset(trimmedName, icon, selectedScene);
+          self.inputManager.setEditMode(false);
+          self.destroySaveDialog();
+          self.hideButtonLayoutEditor();
+          self.showButtonLayoutEditor();
+        }
+      }
+    );
+    confirmBtn.setDepth(3102);
+    this.saveDialogElements.push(confirmBtn);
+
+    var cancelBtn = this.createSettingsButton(
+      width / 2 + 80,
+      height / 2 + 85,
+      130,
+      '❌ 取消',
+      0x666666,
+      function() {
+        self.destroySaveDialog();
+      }
+    );
+    cancelBtn.setDepth(3102);
+    this.saveDialogElements.push(cancelBtn);
+
+    var updateCursorPos = function() {
+      cursor.x = width / 2 - 140 + inputText.width;
+    };
+
+    if (!this._savePresetKeyHandler) {
+      this._savePresetKeyHandler = function(event) {
+        if (!self.saveDialogElements) return;
+        if (event.key === 'Backspace') {
+          event.preventDefault();
+          if (presetName.length > 0) {
+            presetName = presetName.slice(0, -1);
+            inputText.setText(presetName);
+            updateCursorPos();
+          }
+        } else if (event.key === 'Enter') {
+          event.preventDefault();
+          confirmBtn.emit('pointerdown');
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          cancelBtn.emit('pointerdown');
+        } else if (event.key.length === 1 && presetName.length < 20) {
+          if (/[a-zA-Z0-9\u4e00-\u9fa5 _\-]/.test(event.key)) {
+            presetName += event.key;
+            inputText.setText(presetName);
+            updateCursorPos();
+          }
+        }
+      };
+    }
+    this.input.keyboard.on('keydown', this._savePresetKeyHandler, this);
+  };
+
+  proto.destroySaveDialog = function() {
+    if (this._savePresetKeyHandler) {
+      this.input.keyboard.off('keydown', this._savePresetKeyHandler, this);
+    }
+    if (this.saveDialogElements) {
+      for (var i = 0; i < this.saveDialogElements.length; i++) {
+        this.saveDialogElements[i].destroy();
+      }
+      this.saveDialogElements = null;
+    }
+    if (this.saveSceneBtns) {
+      for (var j = 0; j < this.saveSceneBtns.length; j++) {
+        this.saveSceneBtns[j].destroy();
+      }
+      this.saveSceneBtns = null;
+    }
+  };
+
+  proto.hideButtonLayoutEditor = function() {
+    this.inputManager.setEditMode(false);
+    this.layoutEditorOpen = false;
+    this.selectedButtonAction = null;
+    this.perBtnScaleSlider = null;
+    this.perBtnScaleValue = null;
+    this.perBtnOpacitySlider = null;
+    this.perBtnOpacityValue = null;
+
+    if (this.saveDialogElements) {
+      this.destroySaveDialog();
+    }
+
+    if (this.layoutEditorElements) {
+      for (var i = 0; i < this.layoutEditorElements.length; i++) {
+        this.layoutEditorElements[i].destroy();
+      }
+      this.layoutEditorElements = null;
+    }
+
+    this.layoutPresetButtons = null;
+    this.sceneButtons = null;
+    this.layoutEditToggle = null;
+    this.perBtnSelectButtons = null;
+
+    if (this.pauseOverlay) this.pauseOverlay.setDepth(2000);
+    if (this.pausePanel) this.pausePanel.setDepth(2001);
+  };
+
   proto.hideSettingsPanel = function() {
     if (this.pauseOverlay) this.pauseOverlay.setDepth(2000);
 
@@ -910,12 +1898,14 @@
 
   proto.hidePauseMenu = function() {
     if (this.settingsPanel) this.hideSettingsPanel();
+    if (this.layoutEditorOpen) this.hideButtonLayoutEditor();
     if (this.pauseOverlay) this.pauseOverlay.destroy();
     if (this.pausePanel) this.pausePanel.destroy();
     if (this.pauseTitle) this.pauseTitle.destroy();
     if (this.resumeBtn) this.resumeBtn.destroy();
     if (this.settingsBtn) this.settingsBtn.destroy();
     if (this.restartBtn) this.restartBtn.destroy();
+    if (this.layoutBtn) this.layoutBtn.destroy();
     if (this.menuBtn) this.menuBtn.destroy();
   };
 
@@ -967,7 +1957,6 @@
         this.carPhysics.slowDown(collision.slowdown);
         var dead = this.scoreManager.takeDamage(collision.damage);
         this.damageCooldown = 800;
-        this.lastDamageX = carX;
         this.screenShake(6, 200);
 
         if (this.scoreManager.comboBreakReason === 'damage') {
@@ -1025,7 +2014,6 @@
           this.carPhysics.applyDamage();
           var destDead = this.scoreManager.takeDamage(damageAmount);
           this.damageCooldown = collision.type === 'barrel' ? 1000 : 600;
-          this.lastDamageX = carX;
           this.screenShake(shakeIntensity, shakeDuration);
 
           if (this.scoreManager.comboBreakReason === 'damage' && collision.type !== 'sign') {
@@ -1061,7 +2049,6 @@
     if (dangerResult.damage > 0) {
       var deadDanger = this.scoreManager.takeDamage(dangerResult.damage);
       this.damageCooldown = 500;
-      this.lastDamageX = carX;
       this.screenShake(4, 150);
       if (this.scoreManager.comboBreakReason === 'damage') {
         this.showFloatingText(carX, this.carPhysics.car.y - 100, '💥 连击中断!', 0xf44336);
@@ -1653,35 +2640,10 @@
       case 'riskBonus':
         if (evt.condition && evt.condition.type === 'noDamage') {
           var range = evt.condition.range || 500;
-          var inRange = true;
-
-          if (this.lastDamageX !== undefined && this.lastDamageX > 0) {
-            var distSinceDamage = carX - this.lastDamageX;
-            inRange = distSinceDamage >= range;
-          }
-
-          if (inRange && this.damageCooldown <= 0) {
+          if (this.scoreManager.damageTaken <= 0 && this.damageCooldown <= 0) {
             this.scoreManager.addBonusScore(evt.points || 100, 'riskBonus');
             this.showFloatingText(carX, this.carPhysics.car.y - 80,
               '🏆 ' + (evt.name || '险道奖励') + ': +' + (evt.points || 100), 0xff9800);
-            this.createBonusEffect(carX, 0xff9800);
-          } else if (!inRange) {
-            this.showFloatingText(carX, this.carPhysics.car.y - 80,
-              '⚠️ ' + (evt.name || '奖励') + ' 未达成', 0x9e9e9e);
-          }
-        }
-        break;
-
-      case 'secretBonus':
-        var unlocked = this.checkSecretBonusCondition(evt, carX);
-        if (unlocked) {
-          this.scoreManager.addBonusScore(evt.points || 500, 'explorationBonus');
-          this.showFloatingText(carX, this.carPhysics.car.y - 90,
-            '💎 ' + (evt.name || '秘境宝藏') + ': +' + (evt.points || 500), 0x9c27b0);
-          this.createBonusEffect(carX, 0x9c27b0);
-
-          if (evt.unlockCar) {
-            this.unlockSponsorCar(evt.unlockCar, evt.name);
           }
         }
         break;
@@ -1711,162 +2673,6 @@
         onComplete: (function(s) { return function() { s.destroy(); }; })(spark)
       });
     }
-  };
-
-  proto.createBonusEffect = function(x, color) {
-    var y = this.carPhysics.car.y;
-    for (var i = 0; i < 15; i++) {
-      var angle = (Math.PI * 2 * i) / 15;
-      var dist = 30 + Math.random() * 20;
-      var px = x + Math.cos(angle) * dist;
-      var py = y + Math.sin(angle) * dist - 30;
-      var particle = this.add.circle(px, py, 3 + Math.random() * 3, color);
-      particle.setDepth(16);
-      particle.setAlpha(0.9);
-
-      var targetDist = 60 + Math.random() * 40;
-      this.tweens.add({
-        targets: particle,
-        x: x + Math.cos(angle) * targetDist,
-        y: y + Math.sin(angle) * targetDist - 50,
-        alpha: 0,
-        scale: 0.4,
-        duration: 600 + Math.random() * 300,
-        ease: 'Power2',
-        onComplete: (function(p) { return function() { p.destroy(); }; })(particle)
-      });
-    }
-
-    var ring = this.add.graphics();
-    ring.lineStyle(3, color, 0.8);
-    ring.strokeCircle(x, y - 30, 10);
-    ring.setDepth(17);
-    this.tweens.add({
-      targets: ring,
-      scale: 5,
-      alpha: 0,
-      duration: 500,
-      ease: 'Quad.easeOut',
-      onComplete: function() { ring.destroy(); }
-    });
-  };
-
-  proto.checkSecretBonusCondition = function(evt, carX) {
-    if (!evt.condition) return true;
-
-    var stats = this.scoreManager.getDetailedStats();
-    var cond = evt.condition;
-
-    switch (cond.type) {
-      case 'noDamage':
-        var range = cond.range || 500;
-        if (this.lastDamageX > 0 && carX - this.lastDamageX < range) {
-          return false;
-        }
-        return this.damageCooldown <= 0;
-
-      case 'combo':
-        return this.scoreManager.comboCount >= (cond.value || 5);
-
-      case 'speed':
-        return this.carPhysics.getSpeed() >= (cond.value || 400);
-
-      case 'score':
-        return this.scoreManager.score >= (cond.value || 5000);
-
-      default:
-        return true;
-    }
-  };
-
-  proto.unlockSponsorCar = function(carId, bonusName) {
-    var cars = MountainRacer.CAR_CONFIGS || {};
-    if (!cars[carId]) return;
-
-    var unlocked = [];
-    try {
-      var saved = localStorage.getItem('mountain_racer_unlocked_cars');
-      unlocked = saved ? JSON.parse(saved) : ['default'];
-    } catch (e) {
-      unlocked = ['default'];
-    }
-
-    if (unlocked.indexOf(carId) === -1) {
-      unlocked.push(carId);
-      try {
-        localStorage.setItem('mountain_racer_unlocked_cars', JSON.stringify(unlocked));
-      } catch (e) {}
-
-      var carInfo = cars[carId];
-      this.showFloatingText(this.carPhysics.car.x, this.carPhysics.car.y - 120,
-        '🎁 解锁赞助赛车: ' + carInfo.name, 0xffd700);
-
-      var self = this;
-      setTimeout(function() {
-        if (self.scene.isActive()) {
-          self.showCarUnlockNotification(carInfo);
-        }
-      }, 800);
-    }
-  };
-
-  proto.showCarUnlockNotification = function(carInfo) {
-    var width = this.scale.width;
-    var height = this.scale.height;
-
-    var container = this.add.container(width / 2, height / 2 - 50);
-    container.setScrollFactor(0);
-    container.setDepth(2001);
-
-    var bg = this.add.graphics();
-    bg.fillStyle(0xffffff, 0.98);
-    bg.fillRoundedRect(-160, -60, 320, 120, 16);
-    bg.lineStyle(3, 0xffd700, 1);
-    bg.strokeRoundedRect(-160, -60, 320, 120, 16);
-    container.add(bg);
-
-    var icon = this.add.text(-120, 0, '🏎️', { fontSize: '36px' }).setOrigin(0.5);
-    container.add(icon);
-
-    var title = this.add.text(-10, -20, '🎁 新赛车解锁!', {
-      fontSize: '16px',
-      fontWeight: 'bold',
-      color: '#ff6b35'
-    }).setOrigin(0, 0.5);
-    container.add(title);
-
-    var name = this.add.text(-10, 5, carInfo.name, {
-      fontSize: '18px',
-      fontWeight: 'bold',
-      color: '#333333'
-    }).setOrigin(0, 0.5);
-    container.add(name);
-
-    var desc = this.add.text(-10, 28, carInfo.description || '赞助限定赛车', {
-      fontSize: '12px',
-      color: '#888888'
-    }).setOrigin(0, 0.5);
-    container.add(desc);
-
-    var self = this;
-    this.tweens.add({
-      targets: container,
-      y: height / 2 - 100,
-      alpha: { from: 0, to: 1 },
-      scale: { from: 0.5, to: 1 },
-      duration: 400,
-      ease: 'Back.easeOut'
-    });
-
-    this.tweens.add({
-      targets: container,
-      alpha: 0,
-      y: height / 2 - 130,
-      duration: 500,
-      delay: 2500,
-      ease: 'Power2',
-      onComplete: function() { container.destroy(); }
-    });
   };
 
   proto.checkHiddenUnlocks = function() {
@@ -2016,8 +2822,6 @@
         this.unlockAchievement(ach);
       }
     }
-
-    this.checkScoreCarUnlocks();
   };
 
   proto.unlockAchievement = function(achievement) {
@@ -2034,106 +2838,6 @@
         localStorage.setItem(key, JSON.stringify(data));
       }
     } catch (e) {}
-
-    this.checkAchievementCarUnlocks();
-  };
-
-  proto.checkAchievementCarUnlocks = function() {
-    var achievements = this.unlockedAchievements || [];
-    var unlockedCars = MountainRacer.getUnlockedCars();
-    var carConfigs = MountainRacer.CAR_CONFIGS || {};
-    var carIds = Object.keys(carConfigs);
-    var newlyUnlocked = [];
-
-    for (var i = 0; i < carIds.length; i++) {
-      var carId = carIds[i];
-      var carCfg = carConfigs[carId];
-      if (!carCfg.unlockCondition || unlockedCars.indexOf(carId) !== -1) continue;
-
-      var cond = carCfg.unlockCondition;
-      var shouldUnlock = false;
-
-      if (cond.type === 'achievement' && cond.id) {
-        if (achievements.indexOf(cond.id) !== -1) {
-          shouldUnlock = true;
-        }
-      }
-
-      if (shouldUnlock) {
-        unlockedCars.push(carId);
-        newlyUnlocked.push(carId);
-      }
-    }
-
-    if (newlyUnlocked.length > 0) {
-      MountainRacer.saveUnlockedCars(unlockedCars);
-
-      for (var j = 0; j < newlyUnlocked.length; j++) {
-        var newCar = carConfigs[newlyUnlocked[j]];
-        if (newCar) {
-          this.showFloatingText(this.carPhysics.car.x, this.carPhysics.car.y - 140 - j * 40,
-            '🎁 解锁赛车: ' + newCar.name, 0xffd700);
-
-          var self = this;
-          (function(carInfo) {
-            setTimeout(function() {
-              if (self.scene.isActive()) {
-                self.showCarUnlockNotification(carInfo);
-              }
-            }, 1000 + j * 600);
-          })(newCar);
-        }
-      }
-    }
-  };
-
-  proto.checkScoreCarUnlocks = function() {
-    var currentScore = this.scoreManager.score;
-    var unlockedCars = MountainRacer.getUnlockedCars();
-    var carConfigs = MountainRacer.CAR_CONFIGS || {};
-    var carIds = Object.keys(carConfigs);
-    var newlyUnlocked = [];
-
-    for (var i = 0; i < carIds.length; i++) {
-      var carId = carIds[i];
-      var carCfg = carConfigs[carId];
-      if (!carCfg.unlockCondition || unlockedCars.indexOf(carId) !== -1) continue;
-
-      var cond = carCfg.unlockCondition;
-      var shouldUnlock = false;
-
-      if (cond.type === 'score' && cond.value) {
-        if (currentScore >= cond.value) {
-          shouldUnlock = true;
-        }
-      }
-
-      if (shouldUnlock) {
-        unlockedCars.push(carId);
-        newlyUnlocked.push(carId);
-      }
-    }
-
-    if (newlyUnlocked.length > 0) {
-      MountainRacer.saveUnlockedCars(unlockedCars);
-
-      for (var j = 0; j < newlyUnlocked.length; j++) {
-        var newCar = carConfigs[newlyUnlocked[j]];
-        if (newCar) {
-          this.showFloatingText(this.carPhysics.car.x, this.carPhysics.car.y - 120 - j * 35,
-            '🎁 解锁赛车: ' + newCar.name, 0xffd700);
-
-          var self = this;
-          (function(carInfo) {
-            setTimeout(function() {
-              if (self.scene.isActive()) {
-                self.showCarUnlockNotification(carInfo);
-              }
-            }, 800 + j * 500);
-          })(newCar);
-        }
-      }
-    }
   };
 
   proto.showAchievementNotification = function(achievement) {

@@ -12,6 +12,9 @@
     this.keys = null;
     this.touchButtons = {};
     this.isMobile = this.detectMobile();
+    this.layoutManager = null;
+    this.editMode = false;
+    this.dragState = null;
   };
 
   var proto = MountainRacer.InputManager.prototype;
@@ -60,38 +63,118 @@
     var height = this.scene.scale.height;
     var self = this;
 
-    var createTouchButton = function(config) {
+    if (!this.layoutManager) {
+      this.layoutManager = new MountainRacer.ButtonLayoutManager(width, height);
+    }
+
+    var createTouchButton = function(action) {
+      var meta = self.layoutManager.getButtonMeta(action);
+      var config = self.layoutManager.getButtonConfig(action);
+      if (!meta || !config) return null;
+
+      var btnSize = self.layoutManager.getEffectiveButtonSize(action);
       var x = config.x;
       var y = config.y;
-      var btnWidth = config.width;
-      var btnHeight = config.height;
-      var label = config.label;
-      var action = config.action;
-      var color = config.color || 0x333333;
+      var label = meta.label;
+      var color = meta.color;
+      var opacity = config.opacity || 0.5;
 
       var container = self.scene.add.container(x, y);
       container.setScrollFactor(0);
       container.setDepth(1000);
+      container.setAlpha(opacity);
+
+      container.btnAction = action;
+      container.btnSize = btnSize;
+      container.btnColor = color;
+      container.isDragging = false;
+
+      var glowGraphics = self.scene.add.graphics();
+      glowGraphics.setAlpha(0);
 
       var graphics = self.scene.add.graphics();
       graphics.fillStyle(color, 0.5);
-      graphics.fillRoundedRect(-btnWidth / 2, -btnHeight / 2, btnWidth, btnHeight, 12);
+      graphics.fillRoundedRect(-btnSize / 2, -btnSize / 2, btnSize, btnSize, 12);
       graphics.lineStyle(3, 0xffffff, 0.6);
-      graphics.strokeRoundedRect(-btnWidth / 2, -btnHeight / 2, btnWidth, btnHeight, 12);
+      graphics.strokeRoundedRect(-btnSize / 2, -btnSize / 2, btnSize, btnSize, 12);
+
+      var editOutline = self.scene.add.graphics();
+      editOutline.setAlpha(0);
+
+      var posLabel = self.scene.add.text(0, -btnSize / 2 - 14, '', {
+        fontSize: '10px',
+        fontWeight: 'bold',
+        color: '#ffffff',
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        padding: { x: 4, y: 2 }
+      });
+      posLabel.setOrigin(0.5);
+      posLabel.setAlpha(0);
 
       var text = self.scene.add.text(0, 0, label, {
-        fontSize: '28px',
+        fontSize: Math.max(16, Math.floor(28 * (btnSize / 80))) + 'px',
         fontWeight: 'bold',
         color: '#ffffff'
       });
       text.setOrigin(0.5);
 
-      container.add([graphics, text]);
-      container.setSize(btnWidth, btnHeight);
+      container.add([glowGraphics, graphics, editOutline, posLabel, text]);
+      container.setSize(btnSize, btnSize);
       container.setInteractive(
-        new Phaser.Geom.Rectangle(-btnWidth / 2, -btnHeight / 2, btnWidth, btnHeight),
+        new Phaser.Geom.Rectangle(-btnSize / 2, -btnSize / 2, btnSize, btnSize),
         Phaser.Geom.Rectangle.Contains
       );
+
+      var drawGlow = function(active) {
+        glowGraphics.clear();
+        if (active) {
+          glowGraphics.fillStyle(color, 0.3);
+          glowGraphics.fillRoundedRect(-btnSize / 2 - 8, -btnSize / 2 - 8, btnSize + 16, btnSize + 16, 16);
+          glowGraphics.lineStyle(4, 0x00e5ff, 0.9);
+          glowGraphics.strokeRoundedRect(-btnSize / 2 - 8, -btnSize / 2 - 8, btnSize + 16, btnSize + 16, 16);
+        }
+      };
+
+      var drawEditOutline = function(enabled) {
+        editOutline.clear();
+        if (enabled) {
+          editOutline.lineStyle(2, 0x00e5ff, 1);
+          var dashSize = 6;
+          var halfW = btnSize / 2;
+          var halfH = btnSize / 2;
+          var x1 = -halfW, y1 = -halfH, x2 = halfW, y2 = halfH;
+          for (var xi = x1; xi < x2; xi += dashSize * 2) {
+            editOutline.lineBetween(xi, y1, Math.min(xi + dashSize, x2), y1);
+            editOutline.lineBetween(xi, y2, Math.min(xi + dashSize, x2), y2);
+          }
+          for (var yi = y1; yi < y2; yi += dashSize * 2) {
+            editOutline.lineBetween(x1, yi, x1, Math.min(yi + dashSize, y2));
+            editOutline.lineBetween(x2, yi, x2, Math.min(yi + dashSize, y2));
+          }
+        }
+      };
+
+      var updatePosLabel = function() {
+        posLabel.setText(Math.round(container.x) + ',' + Math.round(container.y));
+      };
+
+      var setEditVisuals = function(editEnabled) {
+        if (editEnabled) {
+          container.setAlpha(1.0);
+          editOutline.setAlpha(1);
+          posLabel.setAlpha(1);
+          drawEditOutline(true);
+          updatePosLabel();
+        } else {
+          var cfg = self.layoutManager.getButtonConfig(action);
+          container.setAlpha(cfg ? cfg.opacity : 0.5);
+          editOutline.setAlpha(0);
+          posLabel.setAlpha(0);
+          drawEditOutline(false);
+        }
+      };
+
+      container.setEditVisuals = setEditVisuals;
 
       var setPressed = function(pressed) {
         graphics.clear();
@@ -100,68 +183,199 @@
         } else {
           graphics.fillStyle(color, 0.5);
         }
-        graphics.fillRoundedRect(-btnWidth / 2, -btnHeight / 2, btnWidth, btnHeight, 12);
+        graphics.fillRoundedRect(-btnSize / 2, -btnSize / 2, btnSize, btnSize, 12);
         graphics.lineStyle(3, 0xffffff, pressed ? 0.9 : 0.6);
-        graphics.strokeRoundedRect(-btnWidth / 2, -btnHeight / 2, btnWidth, btnHeight, 12);
+        graphics.strokeRoundedRect(-btnSize / 2, -btnSize / 2, btnSize, btnSize, 12);
         self.input[action] = pressed;
       };
 
-      container.on('pointerdown', function() { setPressed(true); });
-      container.on('pointerup', function() { setPressed(false); });
-      container.on('pointerout', function() { setPressed(false); });
-      container.on('pointerleave', function() { setPressed(false); });
+      container.on('pointerdown', function(pointer) {
+        if (self.editMode) {
+          self.startDrag(action, pointer);
+          container.isDragging = true;
+          drawGlow(true);
+          glowGraphics.setAlpha(1);
+          container.setDepth(1002);
+          return;
+        }
+        setPressed(true);
+      });
+      container.on('pointerup', function() {
+        if (self.editMode) {
+          container.isDragging = false;
+          drawGlow(false);
+          glowGraphics.setAlpha(0);
+          container.setDepth(1000);
+          return;
+        }
+        setPressed(false);
+      });
+      container.on('pointerout', function() {
+        if (self.editMode) return;
+        setPressed(false);
+      });
+      container.on('pointerleave', function() {
+        if (self.editMode) return;
+        setPressed(false);
+      });
 
       self.scene.input.on('pointerup', function() {
+        if (self.editMode) {
+          self.stopDrag();
+          container.isDragging = false;
+          drawGlow(false);
+          glowGraphics.setAlpha(0);
+          container.setDepth(1000);
+          return;
+        }
         if (self.input[action] && !self.scene.input.activePointer.isDown) {
           setPressed(false);
         }
       });
 
+      self.scene.input.on('pointermove', function(pointer) {
+        if (self.editMode && self.dragState && self.dragState.action === action) {
+          self.doDrag(pointer);
+          updatePosLabel();
+        }
+      });
+
+      container.setPressed = setPressed;
+      container.redraw = function(newSize, newOpacity) {
+        btnSize = newSize;
+        container.btnSize = newSize;
+        graphics.clear();
+        graphics.fillStyle(color, 0.5);
+        graphics.fillRoundedRect(-btnSize / 2, -btnSize / 2, btnSize, btnSize, 12);
+        graphics.lineStyle(3, 0xffffff, 0.6);
+        graphics.strokeRoundedRect(-btnSize / 2, -btnSize / 2, btnSize, btnSize, 12);
+        text.setFontSize(Math.max(16, Math.floor(28 * (btnSize / 80))) + 'px');
+        container.setSize(btnSize, btnSize);
+        container.input.hitArea = new Phaser.Geom.Rectangle(-btnSize / 2, -btnSize / 2, btnSize, btnSize);
+        drawEditOutline(self.editMode);
+        posLabel.y = -btnSize / 2 - 14;
+        updatePosLabel();
+        if (typeof newOpacity === 'number') {
+          container.setAlpha(self.editMode ? 1.0 : newOpacity);
+        }
+      };
+
       return container;
     };
 
-    var btnSize = 80;
-    var margin = 20;
+    var actions = this.layoutManager.getAllButtonActions();
+    for (var i = 0; i < actions.length; i++) {
+      var action = actions[i];
+      this.touchButtons[action] = createTouchButton(action);
+    }
+  };
 
-    this.touchButtons.accelerate = createTouchButton({
-      x: width - margin - btnSize / 2,
-      y: height - margin - btnSize / 2,
-      width: btnSize,
-      height: btnSize,
-      label: '▲',
-      action: 'accelerate',
-      color: 0xff6b35
-    });
+  proto.startDrag = function(action, pointer) {
+    var btn = this.touchButtons[action];
+    if (!btn) return;
+    this.dragState = {
+      action: action,
+      offsetX: pointer.x - btn.x,
+      offsetY: pointer.y - btn.y
+    };
+    btn.setDepth(1001);
+  };
 
-    this.touchButtons.brake = createTouchButton({
-      x: width - margin - btnSize / 2 - btnSize - margin,
-      y: height - margin - btnSize / 2,
-      width: btnSize,
-      height: btnSize,
-      label: '▼',
-      action: 'brake',
-      color: 0x4a90d9
-    });
+  proto.doDrag = function(pointer) {
+    if (!this.dragState) return;
+    var btn = this.touchButtons[this.dragState.action];
+    if (!btn) return;
+    var newX = pointer.x - this.dragState.offsetX;
+    var newY = pointer.y - this.dragState.offsetY;
+    newX = Math.max(40, Math.min(this.scene.scale.width - 40, newX));
+    newY = Math.max(40, Math.min(this.scene.scale.height - 40, newY));
+    btn.x = newX;
+    btn.y = newY;
+    this.layoutManager.updateButtonPosition(this.dragState.action, newX, newY);
+  };
 
-    this.touchButtons.left = createTouchButton({
-      x: margin + btnSize / 2,
-      y: height - margin - btnSize / 2,
-      width: btnSize,
-      height: btnSize,
-      label: '◀',
-      action: 'left',
-      color: 0x333333
-    });
+  proto.stopDrag = function() {
+    if (!this.dragState) return;
+    var btn = this.touchButtons[this.dragState.action];
+    if (btn) {
+      btn.setDepth(1000);
+    }
+    this.dragState = null;
+  };
 
-    this.touchButtons.right = createTouchButton({
-      x: margin + btnSize / 2 + btnSize + margin,
-      y: height - margin - btnSize / 2,
-      width: btnSize,
-      height: btnSize,
-      label: '▶',
-      action: 'right',
-      color: 0x333333
-    });
+  proto.setEditMode = function(enabled) {
+    this.editMode = enabled;
+    var actions = this.layoutManager.getAllButtonActions();
+    for (var i = 0; i < actions.length; i++) {
+      var btn = this.touchButtons[actions[i]];
+      if (!btn) continue;
+      if (typeof btn.setEditVisuals === 'function') {
+        btn.setEditVisuals(enabled);
+      } else {
+        if (enabled) {
+          btn.setAlpha(1.0);
+        } else {
+          var config = this.layoutManager.getButtonConfig(actions[i]);
+          btn.setAlpha(config ? config.opacity : 0.5);
+        }
+      }
+    }
+  };
+
+  proto.applyButtonScale = function(action, scale) {
+    this.layoutManager.updateButtonScale(action, scale);
+    var btn = this.touchButtons[action];
+    if (!btn) return;
+    var newSize = this.layoutManager.getEffectiveButtonSize(action);
+    var config = this.layoutManager.getButtonConfig(action);
+    btn.redraw(newSize, config ? config.opacity : 0.5);
+  };
+
+  proto.applyAllButtonScale = function(scale) {
+    this.layoutManager.updateAllScales(scale);
+    var actions = this.layoutManager.getAllButtonActions();
+    for (var i = 0; i < actions.length; i++) {
+      var btn = this.touchButtons[actions[i]];
+      if (!btn) continue;
+      var newSize = this.layoutManager.getEffectiveButtonSize(actions[i]);
+      var config = this.layoutManager.getButtonConfig(actions[i]);
+      btn.redraw(newSize, config ? config.opacity : 0.5);
+    }
+  };
+
+  proto.applyButtonOpacity = function(action, opacity) {
+    this.layoutManager.updateButtonOpacity(action, opacity);
+    var btn = this.touchButtons[action];
+    if (!btn) return;
+    btn.setAlpha(opacity);
+  };
+
+  proto.applyAllButtonOpacity = function(opacity) {
+    this.layoutManager.updateAllOpacity(opacity);
+    var actions = this.layoutManager.getAllButtonActions();
+    for (var i = 0; i < actions.length; i++) {
+      var btn = this.touchButtons[actions[i]];
+      if (btn) btn.setAlpha(opacity);
+    }
+  };
+
+  proto.applyPreset = function(name) {
+    this.layoutManager.switchPreset(name);
+    this.rebuildTouchControls();
+  };
+
+  proto.rebuildTouchControls = function() {
+    this.destroyTouchButtons();
+    this.setupTouchControls();
+  };
+
+  proto.destroyTouchButtons = function() {
+    for (var key in this.touchButtons) {
+      if (this.touchButtons[key]) {
+        this.touchButtons[key].destroy();
+      }
+    }
+    this.touchButtons = {};
   };
 
   proto.getState = function() {
@@ -177,12 +391,7 @@
   };
 
   proto.destroy = function() {
-    for (var key in this.touchButtons) {
-      if (this.touchButtons[key]) {
-        this.touchButtons[key].destroy();
-      }
-    }
-    this.touchButtons = {};
+    this.destroyTouchButtons();
   };
 
   window.MountainRacer = MountainRacer;
