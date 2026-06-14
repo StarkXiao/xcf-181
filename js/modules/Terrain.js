@@ -1,6 +1,84 @@
 (function() {
   var MountainRacer = window.MountainRacer || {};
 
+  MountainRacer.TERRAIN_PRESETS = {
+    steepSlopeUp: {
+      type: 'steepSlope',
+      name: '连续上坡',
+      direction: 'up',
+      minAngle: 0.15,
+      maxAngle: 0.4,
+      minLength: 300,
+      maxLength: 800
+    },
+    steepSlopeDown: {
+      type: 'steepSlope',
+      name: '连续下坡',
+      direction: 'down',
+      minAngle: 0.15,
+      maxAngle: 0.45,
+      minLength: 300,
+      maxLength: 900
+    },
+    brokenBridge: {
+      type: 'brokenBridge',
+      name: '断桥落差',
+      minGap: 80,
+      maxGap: 200,
+      minDrop: 40,
+      maxDrop: 120,
+      approachLength: 100
+    },
+    bufferPlatform: {
+      type: 'bufferPlatform',
+      name: '缓冲平台',
+      minLength: 150,
+      maxLength: 400
+    },
+    stepSlope: {
+      type: 'stepSlope',
+      name: '阶梯式起伏',
+      stepCount: [3, 6],
+      stepHeight: [20, 50],
+      stepWidth: [80, 150]
+    }
+  };
+
+  MountainRacer.DIFFICULTY_CONFIGS = {
+    easy: {
+      featureDensity: 0.0008,
+      maxFeatures: 4,
+      allowedTypes: ['bufferPlatform', 'steepSlopeUp', 'steepSlopeDown'],
+      steepSlopeMaxAngle: 0.2,
+      brokenBridgeMaxDrop: 50,
+      brokenBridgeMaxGap: 100
+    },
+    normal: {
+      featureDensity: 0.0015,
+      maxFeatures: 7,
+      allowedTypes: ['bufferPlatform', 'steepSlopeUp', 'steepSlopeDown', 'brokenBridge', 'stepSlope'],
+      steepSlopeMaxAngle: 0.32,
+      brokenBridgeMaxDrop: 90,
+      brokenBridgeMaxGap: 150
+    },
+    hard: {
+      featureDensity: 0.0025,
+      maxFeatures: 12,
+      allowedTypes: ['steepSlopeUp', 'steepSlopeDown', 'brokenBridge', 'stepSlope', 'bufferPlatform'],
+      steepSlopeMaxAngle: 0.45,
+      brokenBridgeMaxDrop: 140,
+      brokenBridgeMaxGap: 200
+    },
+    extreme: {
+      featureDensity: 0.0035,
+      maxFeatures: 16,
+      allowedTypes: ['steepSlopeDown', 'brokenBridge', 'stepSlope'],
+      steepSlopeMaxAngle: 0.55,
+      brokenBridgeMaxDrop: 180,
+      brokenBridgeMaxGap: 250
+    }
+  };
+
   MountainRacer.LEVEL_CONFIGS = {
     1: {
       name: '初级赛道',
@@ -29,6 +107,7 @@
           hidden: false,
           description: '平坦安全的主路',
           difficulty: '简单',
+          terrainDifficulty: 'easy',
           estimatedTime: '~60秒',
           pros: ['安全稳定', '障碍稀少', '适合新手'],
           cons: ['奖励一般', '缺乏挑战'],
@@ -56,6 +135,7 @@
           hidden: false,
           description: '崎岖但更短，奖励更高',
           difficulty: '中等',
+          terrainDifficulty: 'normal',
           estimatedTime: '~55秒',
           pros: ['距离更短', '奖励更高', '跳跃更多'],
           cons: ['地形崎岖', '落石危险', '路面湿滑'],
@@ -87,6 +167,7 @@
           unlockHint: '🚀 达到 400+ 速度解锁',
           description: '隐藏捷径，超高奖励',
           difficulty: '困难',
+          terrainDifficulty: 'hard',
           estimatedTime: '~45秒',
           pros: ['距离最短', '奖励最高', '宝石密集'],
           cons: ['极其崎岖', '悬崖危险', '落石频繁'],
@@ -149,6 +230,7 @@
           hidden: false,
           description: '标准主路',
           difficulty: '简单',
+          terrainDifficulty: 'easy',
           estimatedTime: '~90秒',
           pros: ['路线熟悉', '障碍适中'],
           cons: ['奖励一般'],
@@ -173,6 +255,7 @@
           hidden: false,
           description: '高风险高回报',
           difficulty: '中等',
+          terrainDifficulty: 'normal',
           estimatedTime: '~80秒',
           pros: ['速度快', '奖励高'],
           cons: ['障碍多', '易损坏'],
@@ -202,6 +285,7 @@
           hidden: false,
           description: '翻山越岭，距离长但障碍少',
           difficulty: '困难',
+          terrainDifficulty: 'hard',
           estimatedTime: '~100秒',
           pros: ['障碍稀少', '视野开阔', '跳跃极多'],
           cons: ['距离最长', '大起大落', '需要技巧'],
@@ -233,6 +317,7 @@
           unlockHint: '🦘 单次飞行 1.5秒+ 解锁',
           description: '终极捷径，需要飞行技术',
           difficulty: '极难',
+          terrainDifficulty: 'extreme',
           estimatedTime: '~65秒',
           pros: ['距离最短', '奖励最高'],
           cons: ['极其危险', '需要技术'],
@@ -297,6 +382,7 @@
           hidden: false,
           description: '标准主路',
           difficulty: '中等',
+          terrainDifficulty: 'normal',
           estimatedTime: '~130秒',
           pros: ['路线熟悉'],
           cons: ['障碍较多'],
@@ -323,6 +409,7 @@
           hidden: false,
           description: '危险但快速',
           difficulty: '困难',
+          terrainDifficulty: 'hard',
           estimatedTime: '~110秒',
           pros: ['速度快', '奖励较高'],
           cons: ['障碍密集', '危险区域多'],
@@ -352,6 +439,7 @@
           hidden: false,
           description: '峡谷穿行，大起大落',
           difficulty: '极难',
+          terrainDifficulty: 'extreme',
           estimatedTime: '~120秒',
           pros: ['地形刺激', '奖励丰厚'],
           cons: ['起伏剧烈', '极易坠落'],
@@ -386,6 +474,7 @@
           unlockHint: '🦘 达成 3次+ 跳跃连击解锁',
           description: '高空赛道，需要多次跳跃解锁',
           difficulty: '传说',
+          terrainDifficulty: 'extreme',
           estimatedTime: '~140秒',
           pros: ['障碍极少', '风景绝美', '独特体验'],
           cons: ['位置高', '坠落即死', '需要跳跃技巧'],
@@ -418,6 +507,7 @@
           unlockHint: '💯 前半程无伤解锁',
           description: '传说中的捷径',
           difficulty: '传说',
+          terrainDifficulty: 'extreme',
           estimatedTime: '~85秒',
           pros: ['距离最短', '奖励最高', '传奇成就'],
           cons: ['极度危险', '障碍密布', '解锁条件苛刻'],
@@ -471,6 +561,7 @@
     this.activeBranches = ['main'];
     this.hiddenUnlocked = {};
     this.branchHistory = [];
+    this.branchTerrainFeatures = {};
     this.generate();
   };
 
@@ -513,6 +604,268 @@
       if (branches[i].id === branchId) return branches[i];
     }
     return branches[0] || { id: 'main', rewardMultiplier: 1.0 };
+  };
+
+  proto.getDifficultyConfig = function(difficultyKey) {
+    return MountainRacer.DIFFICULTY_CONFIGS[difficultyKey] || MountainRacer.DIFFICULTY_CONFIGS.normal;
+  };
+
+  proto.randomRange = function(min, max) {
+    return min + Math.random() * (max - min);
+  };
+
+  proto.randomIntRange = function(min, max) {
+    return Math.floor(this.randomRange(min, max + 1));
+  };
+
+  proto.generateTerrainFeaturesForBranch = function(branchId, length) {
+    var branchCfg = this.getBranchConfig(branchId);
+    var difficultyKey = branchCfg.terrainDifficulty || 'normal';
+    var diffCfg = this.getDifficultyConfig(difficultyKey);
+    var presets = MountainRacer.TERRAIN_PRESETS;
+
+    var features = [];
+    var targetCount = Math.min(
+      diffCfg.maxFeatures,
+      Math.floor(length * diffCfg.featureDensity)
+    );
+
+    var minSpacing = 350;
+    var attempts = 0;
+    var maxAttempts = targetCount * 8;
+
+    while (features.length < targetCount && attempts < maxAttempts) {
+      attempts++;
+      var allowedTypes = diffCfg.allowedTypes.slice();
+      var typePresetName = allowedTypes[this.randomIntRange(0, allowedTypes.length - 1)];
+      var preset = presets[typePresetName];
+      if (!preset) continue;
+
+      var feature = {
+        id: 'feat_' + branchId + '_' + features.length,
+        branchId: branchId,
+        type: preset.type,
+        presetName: typePresetName,
+        name: preset.name
+      };
+
+      var startX = 0;
+      var endX = 0;
+
+      if (preset.type === 'steepSlope') {
+        var slopeLength = this.randomRange(preset.minLength, preset.maxLength);
+        var maxAngle = Math.min(preset.maxAngle, diffCfg.steepSlopeMaxAngle || preset.maxAngle);
+        startX = this.randomRange(600, length - slopeLength - 600);
+        endX = startX + slopeLength;
+        feature.startX = startX;
+        feature.endX = endX;
+        feature.length = slopeLength;
+        feature.angle = this.randomRange(preset.minAngle, maxAngle);
+        feature.direction = preset.direction;
+      } else if (preset.type === 'brokenBridge') {
+        var gap = this.randomRange(preset.minGap, Math.min(preset.maxGap, diffCfg.brokenBridgeMaxGap || preset.maxGap));
+        var drop = this.randomRange(preset.minDrop, Math.min(preset.maxDrop, diffCfg.brokenBridgeMaxDrop || preset.maxDrop));
+        var approach = preset.approachLength;
+        startX = this.randomRange(600 + approach, length - gap - approach - 600);
+        endX = startX + approach * 2 + gap;
+        feature.startX = startX;
+        feature.endX = endX;
+        feature.gapStartX = startX + approach;
+        feature.gapEndX = startX + approach + gap;
+        feature.gapWidth = gap;
+        feature.dropHeight = drop;
+        feature.approachLength = approach;
+      } else if (preset.type === 'bufferPlatform') {
+        var platLen = this.randomRange(preset.minLength, preset.maxLength);
+        startX = this.randomRange(600, length - platLen - 600);
+        endX = startX + platLen;
+        feature.startX = startX;
+        feature.endX = endX;
+        feature.length = platLen;
+      } else if (preset.type === 'stepSlope') {
+        var stepCount = this.randomIntRange(preset.stepCount[0], preset.stepCount[1]);
+        var stepHeight = this.randomRange(preset.stepHeight[0], preset.stepHeight[1]);
+        var stepWidth = this.randomRange(preset.stepWidth[0], preset.stepWidth[1]);
+        var totalLen = stepCount * stepWidth + 200;
+        startX = this.randomRange(600, length - totalLen - 600);
+        endX = startX + totalLen;
+        feature.startX = startX;
+        feature.endX = endX;
+        feature.stepCount = stepCount;
+        feature.stepHeight = stepHeight;
+        feature.stepWidth = stepWidth;
+        feature.direction = Math.random() < 0.5 ? 'up' : 'down';
+      } else {
+        continue;
+      }
+
+      var overlaps = false;
+      for (var fi = 0; fi < features.length; fi++) {
+        var existing = features[fi];
+        if (startX < existing.endX + minSpacing && endX > existing.startX - minSpacing) {
+          overlaps = true;
+          break;
+        }
+      }
+      if (overlaps) continue;
+
+      features.push(feature);
+    }
+
+    features.sort(function(a, b) { return a.startX - b.startX; });
+    return features;
+  };
+
+  proto.getPathIndexAtX = function(path, x) {
+    var step = 4;
+    return Math.min(Math.floor(x / step), path.length - 1);
+  };
+
+  proto.applyTerrainFeatures = function(branchId, path) {
+    var features = this.branchTerrainFeatures[branchId] || [];
+    if (features.length === 0) return path;
+
+    for (var fi = 0; fi < features.length; fi++) {
+      var f = features[fi];
+      if (f.type === 'steepSlope') {
+        this.applySteepSlope(path, f);
+      } else if (f.type === 'brokenBridge') {
+        this.applyBrokenBridge(path, f);
+      } else if (f.type === 'bufferPlatform') {
+        this.applyBufferPlatform(path, f);
+      } else if (f.type === 'stepSlope') {
+        this.applyStepSlope(path, f);
+      }
+    }
+    return path;
+  };
+
+  proto.applySteepSlope = function(path, feature) {
+    var startIdx = this.getPathIndexAtX(path, feature.startX);
+    var endIdx = this.getPathIndexAtX(path, feature.endX);
+    if (endIdx <= startIdx) return;
+
+    var startY = path[startIdx].y;
+    var dirMul = feature.direction === 'up' ? -1 : 1;
+    var totalDelta = Math.tan(feature.angle) * (feature.endX - feature.startX) * dirMul;
+
+    for (var i = startIdx; i <= endIdx; i++) {
+      var p = path[i];
+      var t = (p.x - feature.startX) / (feature.endX - feature.startX);
+      var ease = t * t * (3 - 2 * t);
+      var delta = totalDelta * ease;
+      p.y += delta;
+    }
+
+    var margin = 60;
+    var preStart = Math.max(0, this.getPathIndexAtX(path, feature.startX - margin));
+    for (var j = preStart; j < startIdx; j++) {
+      var pt = path[j];
+      var tm = 1 - (feature.startX - pt.x) / margin;
+      pt.y += totalDelta * tm * tm * 0.3;
+    }
+    var postEnd = Math.min(path.length - 1, this.getPathIndexAtX(path, feature.endX + margin));
+    for (var k = endIdx + 1; k <= postEnd; k++) {
+      var pk = path[k];
+      var tm2 = 1 - (pk.x - feature.endX) / margin;
+      pk.y += totalDelta * (1 - (1 - tm2) * (1 - tm2)) * 0.3;
+    }
+  };
+
+  proto.applyBrokenBridge = function(path, feature) {
+    var approachStartIdx = this.getPathIndexAtX(path, feature.startX);
+    var gapStartIdx = this.getPathIndexAtX(path, feature.gapStartX);
+    var gapEndIdx = this.getPathIndexAtX(path, feature.gapEndX);
+    var approachEndIdx = this.getPathIndexAtX(path, feature.endX);
+
+    var leftPlatformY = path[gapStartIdx].y;
+    var rightPlatformY = leftPlatformY + feature.dropHeight;
+
+    for (var i = approachStartIdx; i <= gapStartIdx; i++) {
+      var p = path[i];
+      var t = (p.x - feature.startX) / (feature.gapStartX - feature.startX);
+      path[i].y = p.y * (1 - t) + leftPlatformY * t;
+    }
+
+    for (var j = gapEndIdx; j <= approachEndIdx; j++) {
+      var pj = path[j];
+      var t2 = (pj.x - feature.gapEndX) / (feature.endX - feature.gapEndX);
+      path[j].y = rightPlatformY * (1 - t2) + pj.y * t2;
+    }
+
+    for (var k = gapStartIdx; k <= gapEndIdx; k++) {
+      path[k].isGap = true;
+      path[k].gapFeature = feature;
+      path[k].leftY = leftPlatformY;
+      path[k].rightY = rightPlatformY;
+    }
+    if (gapStartIdx > 0) {
+      path[gapStartIdx - 1].isGapEdge = 'left';
+    }
+    if (gapEndIdx < path.length - 1) {
+      path[gapEndIdx + 1].isGapEdge = 'right';
+    }
+  };
+
+  proto.applyBufferPlatform = function(path, feature) {
+    var startIdx = this.getPathIndexAtX(path, feature.startX);
+    var endIdx = this.getPathIndexAtX(path, feature.endX);
+    if (endIdx <= startIdx) return;
+
+    var sumY = 0;
+    var sampleCount = 0;
+    for (var s = startIdx; s <= Math.min(startIdx + 5, endIdx); s++) {
+      sumY += path[s].y;
+      sampleCount++;
+    }
+    var platformY = sumY / sampleCount;
+
+    for (var i = startIdx; i <= endIdx; i++) {
+      var p = path[i];
+      var t = 0;
+      if (i < startIdx + 10) {
+        t = (i - startIdx) / 10;
+      } else if (i > endIdx - 10) {
+        t = (endIdx - i) / 10;
+      } else {
+        t = 1;
+      }
+      t = Math.max(0, Math.min(1, t));
+      var easeT = t * t * (3 - 2 * t);
+      path[i].y = p.y * (1 - easeT) + platformY * easeT;
+    }
+  };
+
+  proto.applyStepSlope = function(path, feature) {
+    var startIdx = this.getPathIndexAtX(path, feature.startX);
+    var endIdx = this.getPathIndexAtX(path, feature.endX);
+    if (endIdx <= startIdx) return;
+
+    var dirMul = feature.direction === 'up' ? -1 : 1;
+    var baseY = path[startIdx].y;
+    var currentStep = 0;
+
+    for (var i = startIdx; i <= endIdx; i++) {
+      var p = path[i];
+      var stepIdx = Math.floor((p.x - feature.startX) / feature.stepWidth);
+      if (stepIdx >= 0 && stepIdx < feature.stepCount) {
+        currentStep = stepIdx;
+      } else if (stepIdx >= feature.stepCount) {
+        currentStep = feature.stepCount;
+      }
+      var targetY = baseY + currentStep * feature.stepHeight * dirMul;
+      path[i].y = path[i].y * 0.4 + targetY * 0.6;
+    }
+  };
+
+  proto.getTerrainFeatureAt = function(x, branchId) {
+    branchId = branchId || this.currentBranch;
+    var features = this.branchTerrainFeatures[branchId] || [];
+    for (var i = 0; i < features.length; i++) {
+      var f = features[i];
+      if (x >= f.startX && x <= f.endX) return f;
+    }
+    return null;
   };
 
   proto.generate = function() {
@@ -594,6 +947,8 @@
       mainPoints.push({ x: x, y: y });
     }
 
+    this.branchTerrainFeatures['main'] = this.generateTerrainFeaturesForBranch('main', length);
+    this.applyTerrainFeatures('main', mainPoints);
     this.branchPaths['main'] = mainPoints;
     this.points = mainPoints.slice();
 
@@ -623,6 +978,8 @@
         branchPath.push({ x: xb, y: yb });
       }
 
+      this.branchTerrainFeatures[branch.id] = this.generateTerrainFeaturesForBranch(branch.id, length);
+      this.applyTerrainFeatures(branch.id, branchPath);
       this.branchPaths[branch.id] = branchPath;
     }
 
@@ -660,6 +1017,16 @@
     var i2 = Math.min(idx + 1, path.length - 1);
     var p1 = path[i1];
     var p2 = path[i2];
+
+    if (p1.isGap || p2.isGap) {
+      var feat = p1.gapFeature || p2.gapFeature;
+      if (feat) {
+        if (x <= feat.gapStartX) return p1.leftY || p1.y;
+        if (x >= feat.gapEndX) return p2.rightY || p2.y;
+        var tGap = (x - feat.gapStartX) / feat.gapWidth;
+        return p1.leftY * (1 - tGap) + p2.rightY * tGap + 9999;
+      }
+    }
 
     if (p1.x === p2.x) return p1.y;
 
@@ -1031,9 +1398,22 @@
     graphics.beginPath();
     graphics.moveTo(startX, 600);
 
+    var inSegGap = false;
     for (var i = startIdx; i <= endIdx && i < path.length; i++) {
       var p = path[i];
-      if (p.x >= startX && p.x <= endX) {
+      if (p.x < startX || p.x > endX) continue;
+      if (p.isGap) {
+        if (!inSegGap) {
+          graphics.lineTo(p.x, 600);
+          inSegGap = true;
+        }
+        continue;
+      }
+      if (inSegGap) {
+        graphics.moveTo(p.x, 600);
+        graphics.lineTo(p.x, p.y);
+        inSegGap = false;
+      } else {
         graphics.lineTo(p.x, p.y);
       }
     }
@@ -1044,6 +1424,35 @@
     graphics.setAlpha(0.4);
   };
 
+  proto.drawPathWithGaps = function(graphics, points, height, isFill) {
+    var inGap = false;
+    for (var i = 0; i < points.length; i++) {
+      var p = points[i];
+      if (p.isGap) {
+        if (!inGap) {
+          if (isFill) graphics.lineTo(p.x, height);
+          inGap = true;
+        }
+        continue;
+      }
+      if (inGap && !p.isGap) {
+        if (isFill) {
+          graphics.moveTo(p.x, height);
+          graphics.lineTo(p.x, p.y);
+        } else {
+          graphics.moveTo(p.x, p.y);
+        }
+        inGap = false;
+        continue;
+      }
+      if (isFill || i === 0) {
+        graphics.lineTo(p.x, p.y);
+      } else {
+        graphics.lineTo(p.x, p.y);
+      }
+    }
+  };
+
   proto.renderForeground = function(length, height) {
     this.mainGraphics = this.scene.add.graphics();
     this.mainGraphics.setDepth(5);
@@ -1051,12 +1460,7 @@
     this.mainGraphics.fillGradientStyle(0x8b7355, 0x8b7355, 0x654321, 0x654321);
     this.mainGraphics.beginPath();
     this.mainGraphics.moveTo(0, height);
-
-    for (var i = 0; i < this.points.length; i++) {
-      var p = this.points[i];
-      this.mainGraphics.lineTo(p.x, p.y);
-    }
-
+    this.drawPathWithGaps(this.mainGraphics, this.points, height, true);
     this.mainGraphics.lineTo(length, height);
     this.mainGraphics.closePath();
     this.mainGraphics.fillPath();
@@ -1066,9 +1470,17 @@
     this.topGraphics.lineStyle(5, 0x228b22, 1);
     this.topGraphics.beginPath();
 
+    var topInGap = false;
     for (var j = 0; j < this.points.length; j++) {
       var p2 = this.points[j];
-      if (j === 0) {
+      if (p2.isGap) {
+        topInGap = true;
+        continue;
+      }
+      if (topInGap) {
+        this.topGraphics.moveTo(p2.x, p2.y);
+        topInGap = false;
+      } else if (j === 0) {
         this.topGraphics.moveTo(p2.x, p2.y);
       } else {
         this.topGraphics.lineTo(p2.x, p2.y);
@@ -1081,6 +1493,7 @@
 
     for (var k = 0; k < this.points.length; k++) {
       var p3 = this.points[k];
+      if (p3.isGap) continue;
       if (Math.random() < 0.08) {
         var angle = this.getAngle(p3.x);
         var nx = -Math.sin(angle);
@@ -1093,6 +1506,8 @@
         this.grassGraphics.strokePath();
       }
     }
+
+    this.renderTerrainFeatureDecorations(length, height);
 
     var flagGraphics = this.scene.add.graphics();
     flagGraphics.setDepth(20);
@@ -1113,6 +1528,85 @@
     endZone.body.setAllowGravity(false);
     endZone.body.setImmovable(true);
     this.endZone = endZone;
+  };
+
+  proto.renderTerrainFeatureDecorations = function(length, height) {
+    var features = this.branchTerrainFeatures[this.currentBranch] || [];
+    var featGfx = this.scene.add.graphics();
+    featGfx.setDepth(7);
+
+    for (var fi = 0; fi < features.length; fi++) {
+      var f = features[fi];
+      if (f.type === 'brokenBridge') {
+        var leftY = this.getHeightAtBranch(f.gapStartX - 4, this.currentBranch);
+        var rightY = this.getHeightAtBranch(f.gapEndX + 4, this.currentBranch);
+
+        featGfx.fillStyle(0x5c3a21, 0.9);
+        featGfx.fillRect(f.gapStartX - 20, leftY, 20, 20);
+        featGfx.fillRect(f.gapEndX, rightY, 20, 20);
+
+        featGfx.lineStyle(4, 0x8b0000, 0.9);
+        featGfx.beginPath();
+        featGfx.moveTo(f.gapStartX - 20, leftY);
+        featGfx.lineTo(f.gapStartX, leftY);
+        featGfx.strokePath();
+
+        featGfx.lineStyle(4, 0x8b0000, 0.9);
+        featGfx.beginPath();
+        featGfx.moveTo(f.gapEndX, rightY);
+        featGfx.lineTo(f.gapEndX + 20, rightY);
+        featGfx.strokePath();
+
+        featGfx.lineStyle(2, 0xff0000, 0.6);
+        for (var wx = 0; wx < f.gapWidth; wx += 12) {
+          var wxPos = f.gapStartX + wx;
+          var dashTop = Math.max(leftY, rightY) + 15;
+          featGfx.beginPath();
+          featGfx.moveTo(wxPos, dashTop);
+          featGfx.lineTo(wxPos + 6, dashTop);
+          featGfx.strokePath();
+        }
+
+        var warnGfx = this.scene.add.graphics();
+        warnGfx.setDepth(15);
+        warnGfx.fillStyle(0xffff00, 0.9);
+        warnGfx.fillTriangle(f.startX - 10, leftY - 60, f.startX + 10, leftY - 60, f.startX, leftY - 45);
+        warnGfx.lineStyle(2, 0x000000, 0.8);
+        warnGfx.strokeTriangle(f.startX - 10, leftY - 60, f.startX + 10, leftY - 60, f.startX, leftY - 45);
+
+        var warnText = this.scene.add.text(f.startX, leftY - 75, '⚠️ 断桥', {
+          fontSize: '12px',
+          fontWeight: 'bold',
+          color: '#ff0000'
+        }).setOrigin(0.5);
+        warnText.setDepth(16);
+
+        if (!this.featureDecorationElements) this.featureDecorationElements = [];
+        this.featureDecorationElements.push(warnGfx, warnText);
+      } else if (f.type === 'bufferPlatform') {
+        var platY = this.getHeightAtBranch(f.startX + 20, this.currentBranch);
+        featGfx.lineStyle(3, 0x4fc3f7, 0.6);
+        featGfx.beginPath();
+        featGfx.moveTo(f.startX, platY - 3);
+        featGfx.lineTo(f.endX, platY - 3);
+        featGfx.strokePath();
+      } else if (f.type === 'steepSlope') {
+        var arrowY = this.getHeightAtBranch((f.startX + f.endX) / 2, this.currentBranch);
+        var slopeArrow = this.scene.add.graphics();
+        slopeArrow.setDepth(8);
+        slopeArrow.fillStyle(f.direction === 'up' ? 0xff5722 : 0x2196f3, 0.7);
+        var arrowX = (f.startX + f.endX) / 2;
+        if (f.direction === 'up') {
+          slopeArrow.fillTriangle(arrowX - 12, arrowY - 30, arrowX + 12, arrowY - 30, arrowX, arrowY - 55);
+        } else {
+          slopeArrow.fillTriangle(arrowX - 12, arrowY - 55, arrowX + 12, arrowY - 55, arrowX, arrowY - 30);
+        }
+        if (!this.featureDecorationElements) this.featureDecorationElements = [];
+        this.featureDecorationElements.push(slopeArrow);
+      }
+    }
+    if (!this.featureDecorationElements) this.featureDecorationElements = [];
+    this.featureDecorationElements.push(featGfx);
   };
 
   proto.renderBranchIndicators = function() {
@@ -1192,6 +1686,14 @@
     if (this.mainGraphics) this.mainGraphics.destroy();
     if (this.topGraphics) this.topGraphics.destroy();
     if (this.grassGraphics) this.grassGraphics.destroy();
+    if (this.featureDecorationElements) {
+      for (var di = 0; di < this.featureDecorationElements.length; di++) {
+        if (this.featureDecorationElements[di] && this.featureDecorationElements[di].destroy) {
+          this.featureDecorationElements[di].destroy();
+        }
+      }
+      this.featureDecorationElements = [];
+    }
 
     var length = this.config.length;
     var height = 600;
@@ -1203,9 +1705,23 @@
     this.mainGraphics.beginPath();
     this.mainGraphics.moveTo(0, height);
 
+    var inGap = false;
     for (var i = 0; i < this.points.length; i++) {
       var p = this.points[i];
-      this.mainGraphics.lineTo(p.x, p.y);
+      if (p.isGap) {
+        if (!inGap) {
+          this.mainGraphics.lineTo(p.x, height);
+          inGap = true;
+        }
+        continue;
+      }
+      if (inGap) {
+        this.mainGraphics.moveTo(p.x, height);
+        this.mainGraphics.lineTo(p.x, p.y);
+        inGap = false;
+      } else {
+        this.mainGraphics.lineTo(p.x, p.y);
+      }
     }
 
     this.mainGraphics.lineTo(length, height);
@@ -1217,9 +1733,17 @@
     this.topGraphics.lineStyle(5, 0x228b22, 1);
     this.topGraphics.beginPath();
 
+    var topInGap2 = false;
     for (var j = 0; j < this.points.length; j++) {
       var p2 = this.points[j];
-      if (j === 0) {
+      if (p2.isGap) {
+        topInGap2 = true;
+        continue;
+      }
+      if (topInGap2) {
+        this.topGraphics.moveTo(p2.x, p2.y);
+        topInGap2 = false;
+      } else if (j === 0) {
         this.topGraphics.moveTo(p2.x, p2.y);
       } else {
         this.topGraphics.lineTo(p2.x, p2.y);
@@ -1232,6 +1756,7 @@
 
     for (var k = 0; k < this.points.length; k++) {
       var p3 = this.points[k];
+      if (p3.isGap) continue;
       if (Math.random() < 0.08) {
         var angle = this.getAngle(p3.x);
         var nx = -Math.sin(angle);
@@ -1244,12 +1769,21 @@
         this.grassGraphics.strokePath();
       }
     }
+
+    this.renderTerrainFeatureDecorations(length, height);
   };
 
   proto.destroy = function() {
     if (this.indicatorGraphics) {
       for (var i = 0; i < this.indicatorGraphics.length; i++) {
         this.indicatorGraphics[i].destroy();
+      }
+    }
+    if (this.featureDecorationElements) {
+      for (var j = 0; j < this.featureDecorationElements.length; j++) {
+        if (this.featureDecorationElements[j] && this.featureDecorationElements[j].destroy) {
+          this.featureDecorationElements[j].destroy();
+        }
       }
     }
     if (this.mainGraphics) { this.mainGraphics.destroy(); this.mainGraphics = null; }
