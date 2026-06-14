@@ -61,6 +61,8 @@
     this.lastObstacleCheckX = 0;
     this.comboTextCooldown = 0;
 
+    this.lastBreakthroughShown = null;
+
     this.loadUnlockedBranches();
   };
 
@@ -313,7 +315,7 @@
     this.pauseOverlay.setDepth(2000);
 
     var panelW = 320;
-    var panelH = 420;
+    var panelH = 340;
 
     this.pausePanel = this.add.graphics();
     this.pausePanel.fillStyle(0xffffff, 0.98);
@@ -329,18 +331,18 @@
       color: '#333333'
     }).setOrigin(0.5).setScrollFactor(0).setDepth(2002);
 
-    var createBtn = function(label, y, color, onClick, btnWidth, icon) {
-      var bw = btnWidth || 240;
+    var createBtn = function(label, y, color, onClick, width, icon) {
+      var btnWidth = width || 240;
       var btn = self.add.container(width / 2, y);
-      btn.setSize(bw, 44);
+      btn.setSize(btnWidth, 44);
       btn.setScrollFactor(0);
       btn.setDepth(2002);
 
       var bg = self.add.graphics();
       bg.fillStyle(color, 1);
-      bg.fillRoundedRect(-bw / 2, -22, bw, 44, 10);
+      bg.fillRoundedRect(-btnWidth / 2, -22, btnWidth, 44, 10);
       bg.lineStyle(2, 0xffffff, 0.5);
-      bg.strokeRoundedRect(-bw / 2, -22, bw, 44, 10);
+      bg.strokeRoundedRect(-btnWidth / 2, -22, btnWidth, 44, 10);
 
       var displayLabel = icon ? icon + ' ' + label : label;
       var text = self.add.text(0, 0, displayLabel, {
@@ -351,7 +353,7 @@
 
       btn.add([bg, text]);
       btn.setInteractive(
-        new Phaser.Geom.Rectangle(-bw / 2, -22, bw, 44),
+        new Phaser.Geom.Rectangle(-btnWidth / 2, -22, btnWidth, 44),
         Phaser.Geom.Rectangle.Contains
       );
 
@@ -365,43 +367,26 @@
       return btn;
     };
 
-    var btnY = height / 2 - 80;
-    var gap = 46;
+    var btnY = height / 2 - 60;
+    var gap = 50;
 
     this.resumeBtn = createBtn('继续游戏', btnY, 0x4caf50, function() {
       self.togglePause();
     }, 240, '▶');
 
-    this.scorePreviewBtn = createBtn('成绩拆解', btnY + gap, 0xff9800, function() {
-      self.showScoreBreakdownPanel();
-    }, 240, '📊');
-
-    this.settingsBtn = createBtn('游戏设置', btnY + gap * 2, 0x9c27b0, function() {
+    this.settingsBtn = createBtn('游戏设置', btnY + gap, 0x9c27b0, function() {
       self.showSettingsPanel();
     }, 240, '⚙️');
 
-    this.restartBtn = createBtn('重新开始', btnY + gap * 3, 0x2196f3, function() {
+    this.restartBtn = createBtn('重新开始', btnY + gap * 2, 0x2196f3, function() {
       self.cleanup();
       self.scene.restart({ level: self.level });
     }, 240, '🔄');
 
-    this.menuBtn = createBtn('返回菜单', btnY + gap * 4, 0x9e9e9e, function() {
+    this.menuBtn = createBtn('返回菜单', btnY + gap * 3, 0x9e9e9e, function() {
       self.cleanup();
       self.scene.start('MenuScene');
     }, 240, '🏠');
-  };
-
-  proto.hidePauseMenu = function() {
-    if (this.scoreBreakdownPanel) this.hideScoreBreakdownPanel();
-    if (this.settingsPanel) this.hideSettingsPanel();
-    if (this.pauseOverlay) this.pauseOverlay.destroy();
-    if (this.pausePanel) this.pausePanel.destroy();
-    if (this.pauseTitle) this.pauseTitle.destroy();
-    if (this.resumeBtn) this.resumeBtn.destroy();
-    if (this.scorePreviewBtn) this.scorePreviewBtn.destroy();
-    if (this.settingsBtn) this.settingsBtn.destroy();
-    if (this.restartBtn) this.restartBtn.destroy();
-    if (this.menuBtn) this.menuBtn.destroy();
   };
 
   proto.showSettingsPanel = function() {
@@ -411,16 +396,13 @@
 
     if (this.pauseOverlay) this.pauseOverlay.setDepth(2500);
 
-    var settings = this.scoreManager.getGameSettings();
-    this.tempSettings = {};
-    for (var sk in settings) {
-      if (settings.hasOwnProperty(sk)) {
-        this.tempSettings[sk] = settings[sk];
-      }
-    }
+    var gameSettings = this.scoreManager.getGameSettings();
+    var midSettings = this.scoreManager.getMidGameSettings();
+    this.tempSettings = { ...gameSettings };
+    this.tempMidSettings = { ...midSettings };
 
     var panelW = 360;
-    var panelH = 480;
+    var panelH = 540;
 
     this.settingsPanel = this.add.graphics();
     this.settingsPanel.fillStyle(0xffffff, 0.98);
@@ -430,63 +412,110 @@
     this.settingsPanel.setScrollFactor(0);
     this.settingsPanel.setDepth(2501);
 
-    this.settingsTitle = this.add.text(width / 2, height / 2 - panelH / 2 + 40, '⚙️ 游戏设置', {
-      fontSize: '24px',
+    this.settingsTitle = this.add.text(width / 2, height / 2 - panelH / 2 + 30, '⚙️ 赛中设置', {
+      fontSize: '22px',
       fontWeight: 'bold',
       color: '#333333'
     }).setOrigin(0.5).setScrollFactor(0).setDepth(2502);
 
-    var settingItems = [
-      { id: 'soundEnabled', label: '音效', icon: '🔊', type: 'toggle' },
-      { id: 'musicEnabled', label: '音乐', icon: '🎵', type: 'toggle' },
-      { id: 'vibrationEnabled', label: '震动反馈', icon: '📳', type: 'toggle' },
-      { id: 'showHints', label: '游戏提示', icon: '💡', type: 'toggle' },
-      { id: 'particleEffects', label: '粒子效果', icon: '✨', type: 'toggle' }
+    var allSettingItems = [
+      { id: 'soundEnabled', label: '音效', icon: '🔊', type: 'toggle', category: 'general' },
+      { id: 'musicEnabled', label: '音乐', icon: '🎵', type: 'toggle', category: 'general' },
+      { id: 'showHints', label: '游戏提示', icon: '💡', type: 'toggle', category: 'general' },
+      { id: 'particleEffects', label: '粒子效果', icon: '✨', type: 'toggle', category: 'general' },
+      { id: 'sfxEnabled', label: '赛中音效', icon: '🔔', type: 'toggle', category: 'midgame' },
+      { id: 'cameraShake', label: '镜头震动', icon: '📳', type: 'toggle', category: 'midgame' },
+      { id: 'showFPS', label: '显示帧率', icon: '📊', type: 'toggle', category: 'midgame' }
     ];
 
-    var startY = height / 2 - panelH / 2 + 90;
-    var itemGap = 50;
-    this.settingToggles = {};
+    this.settingsSectionLabels = [];
 
-    for (var i = 0; i < settingItems.length; i++) {
-      var item = settingItems[i];
-      var y = startY + i * itemGap;
+    var generalLabel = this.add.text(width / 2 - panelW / 2 + 20, height / 2 - panelH / 2 + 60, '🎮 通用设置', {
+      fontSize: '13px',
+      fontWeight: 'bold',
+      color: '#9c27b0'
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(2503);
+    this.settingsSectionLabels.push(generalLabel);
+
+    var startY = height / 2 - panelH / 2 + 82;
+    var itemGap = 38;
+    this.settingToggles = {};
+    this.settingsItemBgs = [];
+
+    var generalCount = 0;
+    for (var gi = 0; gi < allSettingItems.length; gi++) {
+      if (allSettingItems[gi].category === 'general') generalCount++;
+    }
+
+    for (var i = 0; i < allSettingItems.length; i++) {
+      var item = allSettingItems[i];
+
+      if (item.category === 'midgame' && i === generalCount) {
+        startY += 8;
+        var midLabel = this.add.text(width / 2 - panelW / 2 + 20, startY, '🏎️ 赛中设置', {
+          fontSize: '13px',
+          fontWeight: 'bold',
+          color: '#ff6b35'
+        }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(2503);
+        this.settingsSectionLabels.push(midLabel);
+        startY += 22;
+      }
+
+      var y = startY + (item.category === 'midgame' ? (i - generalCount) * itemGap : i * itemGap);
+      if (item.category === 'midgame') {
+        y = startY + (i - generalCount) * itemGap;
+      }
 
       var bg = this.add.graphics();
       bg.fillStyle(0xf5f5f5, 1);
-      bg.fillRoundedRect(width / 2 - panelW / 2 + 20, y - 20, panelW - 40, 40, 8);
+      bg.fillRoundedRect(width / 2 - panelW / 2 + 20, y - 16, panelW - 40, 34, 8);
       bg.setScrollFactor(0);
       bg.setDepth(2502);
+      this.settingsItemBgs.push(bg);
 
       var iconText = this.add.text(width / 2 - panelW / 2 + 35, y, item.icon, {
-        fontSize: '20px'
+        fontSize: '18px'
       }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(2503);
 
-      var labelText = this.add.text(width / 2 - panelW / 2 + 70, y, item.label, {
-        fontSize: '16px',
+      var labelText = this.add.text(width / 2 - panelW / 2 + 65, y, item.label, {
+        fontSize: '14px',
         fontWeight: 'bold',
         color: '#333333'
       }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(2503);
 
+      var initialValue;
+      if (item.category === 'midgame') {
+        initialValue = this.tempMidSettings[item.id];
+      } else {
+        initialValue = this.tempSettings[item.id];
+      }
+
       var toggleContainer = this.createToggle(
         width / 2 + panelW / 2 - 50,
         y,
-        this.tempSettings[item.id],
-        (function(itemId) {
+        initialValue,
+        (function(itemId, category) {
           return function(value) {
-            self.tempSettings[itemId] = value;
+            if (category === 'midgame') {
+              self.tempMidSettings[itemId] = value;
+              self.scoreManager.applyMidGameSettings(self.tempMidSettings);
+              self.applyMidGameSettings(self.tempMidSettings);
+            } else {
+              self.tempSettings[itemId] = value;
+            }
           };
-        })(item.id)
+        })(item.id, item.category)
       );
       toggleContainer.setDepth(2503);
       this.settingToggles[item.id] = toggleContainer;
     }
 
-    var difficultyY = startY + settingItems.length * itemGap + 10;
-    this.add.text(width / 2 - panelW / 2 + 20, difficultyY, '🎮 控制方式', {
-      fontSize: '16px',
+    var lastSettingY = startY + (allSettingItems.length - generalCount) * itemGap + 15;
+
+    this.add.text(width / 2 - panelW / 2 + 20, lastSettingY, '🎮 控制方式', {
+      fontSize: '13px',
       fontWeight: 'bold',
-      color: '#333333'
+      color: '#2196f3'
     }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(2503);
 
     var controlModes = [
@@ -495,7 +524,7 @@
       { id: 'auto', label: '自动', icon: '🤖' }
     ];
 
-    var controlY = difficultyY + 35;
+    var controlY = lastSettingY + 30;
     this.controlButtons = [];
     for (var c = 0; c < controlModes.length; c++) {
       var mode = controlModes[c];
@@ -514,7 +543,40 @@
       this.controlButtons.push({ btn: ctrlBtn, id: mode.id });
     }
 
-    var btnY = height / 2 + panelH / 2 - 50;
+    var difficultyY = controlY + 35;
+    this.add.text(width / 2 - panelW / 2 + 20, difficultyY, '⚡ 难度调节', {
+      fontSize: '13px',
+      fontWeight: 'bold',
+      color: '#ff6b35'
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(2503);
+
+    var difficulties = [
+      { id: 'easy', label: '简单', icon: '🟢', color: 0x4caf50 },
+      { id: 'normal', label: '普通', icon: '🟡', color: 0xff9800 },
+      { id: 'hard', label: '困难', icon: '🔴', color: 0xf44336 }
+    ];
+
+    var diffY = difficultyY + 30;
+    this.difficultyButtons = [];
+    for (var d = 0; d < difficulties.length; d++) {
+      var diff = difficulties[d];
+      var dx = width / 2 - 100 + d * 100;
+      var isDiffSelected = this.tempMidSettings.difficulty === diff.id;
+
+      var diffBtn = this.createDifficultyButton(dx, diffY, diff, isDiffSelected,
+        (function(diffId) {
+          return function() {
+            self.tempMidSettings.difficulty = diffId;
+            self.scoreManager.applyMidGameSettings({ difficulty: diffId });
+            self.updateDifficultyButtons();
+          };
+        })(diff.id)
+      );
+      diffBtn.setDepth(2503);
+      this.difficultyButtons.push({ btn: diffBtn, id: diff.id });
+    }
+
+    var btnY = height / 2 + panelH / 2 - 40;
     var btnW = 140;
     var btnGap = 20;
 
@@ -538,6 +600,8 @@
       0x4caf50,
       function() {
         self.saveGameSettings();
+        self.scoreManager.applyMidGameSettings(self.tempMidSettings);
+        self.applyMidGameSettings(self.tempMidSettings);
         self.hideSettingsPanel();
       }
     );
@@ -655,6 +719,88 @@
     }
   };
 
+  proto.createDifficultyButton = function(x, y, diff, isSelected, onClick) {
+    var container = this.add.container(x, y);
+    container.setScrollFactor(0);
+    container.setSize(80, 36);
+    container.diffId = diff.id;
+
+    var bg = this.add.graphics();
+    container.bg = bg;
+
+    var updateVisual = function(selected) {
+      bg.clear();
+      if (selected) {
+        bg.fillStyle(diff.color, 1);
+        bg.fillRoundedRect(-40, -18, 80, 36, 8);
+        bg.lineStyle(2, 0xffffff, 0.5);
+        bg.strokeRoundedRect(-40, -18, 80, 36, 8);
+      } else {
+        bg.fillStyle(0xf0f0f0, 1);
+        bg.fillRoundedRect(-40, -18, 80, 36, 8);
+        bg.lineStyle(2, 0xcccccc, 1);
+        bg.strokeRoundedRect(-40, -18, 80, 36, 8);
+      }
+    };
+
+    updateVisual(isSelected);
+    container.add(bg);
+
+    var icon = this.add.text(0, -5, diff.icon, {
+      fontSize: '14px'
+    }).setOrigin(0.5);
+    container.add(icon);
+
+    var label = this.add.text(0, 8, diff.label, {
+      fontSize: '11px',
+      fontWeight: 'bold',
+      color: isSelected ? '#ffffff' : '#666666'
+    }).setOrigin(0.5);
+    container.label = label;
+    container.add(label);
+
+    container.setInteractive(
+      new Phaser.Geom.Rectangle(-40, -18, 80, 36),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    container.on('pointerdown', function() {
+      onClick();
+    });
+
+    container.updateSelection = function(selected) {
+      updateVisual(selected);
+      label.setColor(selected ? '#ffffff' : '#666666');
+    };
+
+    return container;
+  };
+
+  proto.updateDifficultyButtons = function() {
+    if (!this.difficultyButtons) return;
+    for (var i = 0; i < this.difficultyButtons.length; i++) {
+      var item = this.difficultyButtons[i];
+      var isSelected = this.tempMidSettings.difficulty === item.id;
+      item.btn.updateSelection(isSelected);
+    }
+  };
+
+  proto.applyMidGameSettings = function(settings) {
+    if (settings.cameraShake === false) {
+      this.cameras.main.shake(0, 0);
+    }
+    if (settings.showFPS && !this.fpsText) {
+      this.fpsText = this.add.text(10, this.scale.height - 15, '', {
+        fontSize: '12px',
+        color: '#00ff00',
+        fontFamily: 'monospace'
+      }).setScrollFactor(0).setDepth(600);
+    } else if (!settings.showFPS && this.fpsText) {
+      this.fpsText.destroy();
+      this.fpsText = null;
+    }
+  };
+
   proto.createSettingsButton = function(x, y, width, label, color, onClick) {
     var container = this.add.container(x, y);
     container.setScrollFactor(0);
@@ -715,6 +861,20 @@
     }
     this.settingToggles = {};
 
+    if (this.settingsItemBgs) {
+      for (var b = 0; b < this.settingsItemBgs.length; b++) {
+        this.settingsItemBgs[b].destroy();
+      }
+      this.settingsItemBgs = null;
+    }
+
+    if (this.settingsSectionLabels) {
+      for (var s = 0; s < this.settingsSectionLabels.length; s++) {
+        this.settingsSectionLabels[s].destroy();
+      }
+      this.settingsSectionLabels = null;
+    }
+
     if (this.controlButtons) {
       for (var i = 0; i < this.controlButtons.length; i++) {
         this.controlButtons[i].btn.destroy();
@@ -722,174 +882,26 @@
       this.controlButtons = null;
     }
 
+    if (this.difficultyButtons) {
+      for (var di = 0; di < this.difficultyButtons.length; di++) {
+        this.difficultyButtons[di].btn.destroy();
+      }
+      this.difficultyButtons = null;
+    }
+
     this.tempSettings = null;
+    this.tempMidSettings = null;
   };
 
-  proto.showScoreBreakdownPanel = function() {
-    var width = this.scale.width;
-    var height = this.scale.height;
-    var self = this;
-
-    if (this.pauseOverlay) this.pauseOverlay.setDepth(2500);
-
-    var dimensions = this.scoreManager.getScoreDimensionBreakdown();
-    var panelW = 360;
-    var panelH = 460;
-
-    this.scoreBreakdownPanel = this.add.graphics();
-    this.scoreBreakdownPanel.fillStyle(0xffffff, 0.98);
-    this.scoreBreakdownPanel.fillRoundedRect(width / 2 - panelW / 2, height / 2 - panelH / 2, panelW, panelH, 20);
-    this.scoreBreakdownPanel.lineStyle(4, 0xff9800, 1);
-    this.scoreBreakdownPanel.strokeRoundedRect(width / 2 - panelW / 2, height / 2 - panelH / 2, panelW, panelH, 20);
-    this.scoreBreakdownPanel.setScrollFactor(0);
-    this.scoreBreakdownPanel.setDepth(2501);
-
-    this.scoreBreakdownTitle = this.add.text(width / 2, height / 2 - panelH / 2 + 35, '📊 实时成绩拆解', {
-      fontSize: '22px',
-      fontWeight: 'bold',
-      color: '#333333'
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(2502);
-
-    this.scoreBreakdownElements = [];
-
-    var comboInfo = this.scoreManager.getComboInfo();
-    var currentScore = this.scoreManager.getScore();
-    var highScore = this.scoreManager.getHighScore();
-    var progressPct = this.scoreManager.getProgress();
-
-    this.scoreBreakdownSummaryY = height / 2 - panelH / 2 + 70;
-
-    var summaryItems = [
-      { label: '当前分数', value: currentScore.toString(), icon: '🏆', color: '#ff6b35' },
-      { label: '最高记录', value: highScore.toString(), icon: '⭐', color: '#ffd700' },
-      { label: '完成进度', value: Math.floor(progressPct * 100) + '%', icon: '📏', color: '#4caf50' },
-      { label: '当前连击', value: 'x' + comboInfo.comboCount, icon: '🔥', color: '#ff5722' }
-    ];
-
-    for (var si = 0; si < summaryItems.length; si++) {
-      var sItem = summaryItems[si];
-      var sx = width / 2 - panelW / 2 + 15 + si * (panelW / 4);
-      var sy = this.scoreBreakdownSummaryY;
-
-      var sBg = this.add.graphics();
-      sBg.fillStyle(0xf8f8f8, 1);
-      sBg.fillRoundedRect(sx, sy, panelW / 4 - 8, 52, 8);
-      sBg.setScrollFactor(0);
-      sBg.setDepth(2502);
-      this.scoreBreakdownElements.push(sBg);
-
-      var sIcon = this.add.text(sx + (panelW / 4 - 8) / 2, sy + 14, sItem.icon, {
-        fontSize: '16px'
-      }).setOrigin(0.5).setScrollFactor(0).setDepth(2503);
-      this.scoreBreakdownElements.push(sIcon);
-
-      var sVal = this.add.text(sx + (panelW / 4 - 8) / 2, sy + 36, sItem.value, {
-        fontSize: '11px',
-        fontWeight: 'bold',
-        color: sItem.color
-      }).setOrigin(0.5).setScrollFactor(0).setDepth(2503);
-      this.scoreBreakdownElements.push(sVal);
-    }
-
-    var dimStartY = this.scoreBreakdownSummaryY + 70;
-
-    var dimLabel = this.add.text(width / 2 - panelW / 2 + 20, dimStartY, '维度分析', {
-      fontSize: '14px',
-      fontWeight: 'bold',
-      color: '#666666'
-    }).setScrollFactor(0).setDepth(2502);
-    this.scoreBreakdownElements.push(dimLabel);
-
-    for (var di = 0; di < dimensions.length; di++) {
-      var dim = dimensions[di];
-      var dy = dimStartY + 28 + di * 42;
-      var barMaxW = panelW - 120;
-
-      var dimRow = this.add.graphics();
-      dimRow.fillStyle(0xf5f5f5, 1);
-      dimRow.fillRoundedRect(width / 2 - panelW / 2 + 15, dy - 8, panelW - 30, 34, 6);
-      dimRow.setScrollFactor(0);
-      dimRow.setDepth(2502);
-      this.scoreBreakdownElements.push(dimRow);
-
-      var dimIcon = this.add.text(width / 2 - panelW / 2 + 28, dy + 8, dim.icon, {
-        fontSize: '14px'
-      }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(2503);
-      this.scoreBreakdownElements.push(dimIcon);
-
-      var dimName = this.add.text(width / 2 - panelW / 2 + 48, dy + 4, dim.label, {
-        fontSize: '12px',
-        fontWeight: 'bold',
-        color: '#333333'
-      }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(2503);
-      this.scoreBreakdownElements.push(dimName);
-
-      var dimDesc = this.add.text(width / 2 - panelW / 2 + 48, dy + 18, dim.description, {
-        fontSize: '9px',
-        color: '#999999'
-      }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(2503);
-      this.scoreBreakdownElements.push(dimDesc);
-
-      var barX = width / 2 + 20;
-      var barBg = this.add.graphics();
-      barBg.fillStyle(0xe0e0e0, 1);
-      barBg.fillRoundedRect(barX, dy + 3, barMaxW * 0.5, 8, 4);
-      barBg.setScrollFactor(0);
-      barBg.setDepth(2503);
-      this.scoreBreakdownElements.push(barBg);
-
-      var dimScorePct = Math.min(1, dim.score / 100);
-      var fillW = Math.max(4, barMaxW * 0.5 * dimScorePct);
-      var dimColor = Phaser.Display.Color.HexStringToColor(dim.color).color;
-      var barFill = this.add.graphics();
-      barFill.fillStyle(dimColor, 0.85);
-      barFill.fillRoundedRect(barX, dy + 3, fillW, 8, 4);
-      barFill.setScrollFactor(0);
-      barFill.setDepth(2504);
-      this.scoreBreakdownElements.push(barFill);
-
-      var dimScoreText = this.add.text(barX + barMaxW * 0.5 + 5, dy + 7, dim.score + '', {
-        fontSize: '10px',
-        fontWeight: 'bold',
-        color: dim.color
-      }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(2503);
-      this.scoreBreakdownElements.push(dimScoreText);
-    }
-
-    var closeBtnY = height / 2 + panelH / 2 - 45;
-    var closeBtn = this.createSettingsButton(
-      width / 2, closeBtnY, 160, '关闭', 0xff9800,
-      function() {
-        self.hideScoreBreakdownPanel();
-      }
-    );
-    closeBtn.setDepth(2503);
-    this.scoreBreakdownCloseBtn = closeBtn;
-  };
-
-  proto.hideScoreBreakdownPanel = function() {
-    if (this.pauseOverlay) this.pauseOverlay.setDepth(2000);
-
-    if (this.scoreBreakdownPanel) {
-      this.scoreBreakdownPanel.destroy();
-      this.scoreBreakdownPanel = null;
-    }
-    if (this.scoreBreakdownTitle) {
-      this.scoreBreakdownTitle.destroy();
-      this.scoreBreakdownTitle = null;
-    }
-    if (this.scoreBreakdownCloseBtn) {
-      this.scoreBreakdownCloseBtn.destroy();
-      this.scoreBreakdownCloseBtn = null;
-    }
-    if (this.scoreBreakdownElements) {
-      for (var i = 0; i < this.scoreBreakdownElements.length; i++) {
-        if (this.scoreBreakdownElements[i] && this.scoreBreakdownElements[i].destroy) {
-          this.scoreBreakdownElements[i].destroy();
-        }
-      }
-      this.scoreBreakdownElements = null;
-    }
+  proto.hidePauseMenu = function() {
+    if (this.settingsPanel) this.hideSettingsPanel();
+    if (this.pauseOverlay) this.pauseOverlay.destroy();
+    if (this.pausePanel) this.pausePanel.destroy();
+    if (this.pauseTitle) this.pauseTitle.destroy();
+    if (this.resumeBtn) this.resumeBtn.destroy();
+    if (this.settingsBtn) this.settingsBtn.destroy();
+    if (this.restartBtn) this.restartBtn.destroy();
+    if (this.menuBtn) this.menuBtn.destroy();
   };
 
   proto.update = function(time, delta) {
@@ -954,10 +966,9 @@
         }
       } else if (collision.type === 'mud') {
         this.carPhysics.slowDown(collision.slowdown);
-        this.scoreManager.registerObstaclePass();
-        if (this.comboTextCooldown <= 0) {
-          this.showFloatingText(carX, this.carPhysics.car.y - 60,
-            '🔥 x' + this.scoreManager.comboCount + ' 连击!', 0xff9800);
+        var mudPoints = this.scoreManager.registerObstaclePass();
+        if (mudPoints > 0 && this.comboTextCooldown <= 0) {
+          this.showFloatingText(carX, this.carPhysics.car.y - 60, '🔥 x' + this.scoreManager.comboCount + ' 连击!', 0xff9800);
           this.comboTextCooldown = 300;
         }
       } else if (collision.type === 'ramp' && collision.boost) {
@@ -966,6 +977,66 @@
         this.scoreManager.addBonusScore(50, 'styleBonus');
         this.rampCooldown = 500;
         this.showFloatingText(this.carPhysics.car.x, this.carPhysics.car.y - 60, '+50 起跳!', 0xffd700);
+      } else if (collision.destructible) {
+        var destResult = this.scoreManager.registerDestructibleDestroyed(
+          collision.type,
+          collision.scoreReward
+        );
+
+        this.carPhysics.slowDown(collision.slowdown);
+
+        var shakeIntensity = 4;
+        var shakeDuration = 150;
+        var damageAmount = collision.damage || 0;
+        var destLabel = '';
+        var destColor = 0x4caf50;
+
+        if (collision.type === 'crate') {
+          destLabel = '📦 木箱';
+          destColor = 0x8b5a2b;
+        } else if (collision.type === 'barrel') {
+          destLabel = '🛢️ 油桶爆炸';
+          destColor = 0xff6600;
+          shakeIntensity = 10;
+          shakeDuration = 350;
+          damageAmount = collision.damage || 25;
+        } else if (collision.type === 'sign') {
+          destLabel = '🪧 路牌';
+          destColor = 0xffd700;
+        }
+
+        if (damageAmount > 0) {
+          this.carPhysics.applyDamage();
+          var destDead = this.scoreManager.takeDamage(damageAmount);
+          this.damageCooldown = collision.type === 'barrel' ? 1000 : 600;
+          this.screenShake(shakeIntensity, shakeDuration);
+
+          if (this.scoreManager.comboBreakReason === 'damage' && collision.type !== 'sign') {
+            this.showFloatingText(carX, this.carPhysics.car.y - 100, '💥 连击中断!', 0xf44336);
+          }
+
+          if (destDead) {
+            this.gameOver = true;
+            this.scoreManager.saveHighScore();
+            this.showGameOver(false, collision.type === 'barrel' ? '油桶爆炸损毁' : '赛车损毁');
+            return;
+          }
+        } else {
+          this.damageCooldown = 300;
+          this.screenShake(shakeIntensity, shakeDuration);
+        }
+
+        if (this.comboTextCooldown <= 0) {
+          var destDisplay = destLabel + ' +' + destResult.totalPoints;
+          if (destResult.bonusPoints > 0) {
+            destDisplay += ' (连锁+' + destResult.bonusPoints + ')';
+          }
+          if (destResult.destructibleCombo >= 3) {
+            destDisplay += ' x' + destResult.destructibleCombo + '连破!';
+          }
+          this.showFloatingText(carX, this.carPhysics.car.y - 70, destDisplay, destColor);
+          this.comboTextCooldown = collision.type === 'barrel' ? 500 : 300;
+        }
       }
     }
 
@@ -1010,6 +1081,12 @@
 
     if (Math.random() < 0.02) {
       this.checkAchievements();
+    }
+
+    var breakthrough = this.scoreManager.highScoreBreakthrough;
+    if (breakthrough && breakthrough !== this.lastBreakthroughShown) {
+      this.lastBreakthroughShown = breakthrough;
+      this.showBreakthroughNotification(breakthrough);
     }
 
     if (this.scoreManager.checkLevelComplete(carX)) {
@@ -1850,6 +1927,67 @@
     });
   };
 
+  proto.showBreakthroughNotification = function(breakthrough) {
+    var width = this.scale.width;
+    var height = this.scale.height;
+    var self = this;
+
+    var container = this.add.container(width / 2, height / 2 - 120);
+    container.setScrollFactor(0);
+    container.setDepth(2000);
+
+    var bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.85);
+    bg.fillRoundedRect(-180, -50, 360, 100, 15);
+    bg.lineStyle(3, 0xffd700, 1);
+    bg.strokeRoundedRect(-180, -50, 360, 100, 15);
+    container.add(bg);
+
+    var icon = this.add.text(0, -25, breakthrough.threshold >= 1.0 ? '🏆' : '🔥', {
+      fontSize: '28px'
+    }).setOrigin(0.5);
+    container.add(icon);
+
+    var title = this.add.text(0, 5, breakthrough.label, {
+      fontSize: '22px',
+      fontWeight: 'bold',
+      color: '#ffd700',
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0.5);
+    container.add(title);
+
+    var detail = this.add.text(0, 30, '已达最高分 ' + breakthrough.percentage + '%!', {
+      fontSize: '13px',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+    container.add(detail);
+
+    container.setAlpha(0);
+    container.setScale(0.5);
+
+    this.tweens.add({
+      targets: container,
+      alpha: 1,
+      scale: 1,
+      duration: 400,
+      ease: 'Back.out',
+      onComplete: function() {
+        self.tweens.add({
+          targets: container,
+          y: height / 2 - 160,
+          alpha: 0,
+          delay: 2500,
+          duration: 500,
+          ease: 'Back.in',
+          onComplete: function() {
+            container.destroy();
+          }
+        });
+      }
+    });
+  };
+
   proto.updateHUD = function() {
     var score = this.scoreManager.getScore();
     var speed = Math.round(this.carPhysics.getSpeed() * 0.6);
@@ -2040,6 +2178,7 @@
     var performanceGrade = this.scoreManager.getPerformanceGrade();
     var runHistory = this.scoreManager.getRunHistory();
     var previousBest = this.scoreManager.previousBestStats;
+    var replayComparison = this.scoreManager.getReplayComparisonData();
 
     this.time.delayedCall(600, function() {
       self.scene.start('GameOverScene', {
@@ -2055,7 +2194,8 @@
         scoreImprovements: scoreImprovements,
         performanceGrade: performanceGrade,
         runHistory: runHistory,
-        previousBestStats: previousBest
+        previousBestStats: previousBest,
+        replayComparison: replayComparison
       });
     });
   };

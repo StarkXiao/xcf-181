@@ -43,6 +43,13 @@
     this.comboHistory = [];
     this.comboBreakReason = null;
 
+    this.destructiblesDestroyed = 0;
+    this.cratesDestroyed = 0;
+    this.barrelsDestroyed = 0;
+    this.signsDestroyed = 0;
+    this.destructibleScore = 0;
+    this.destructibleCombo = 0;
+
     this.bonusScores = {
       distance: 0,
       timeBonus: 0,
@@ -55,7 +62,8 @@
       explorationBonus: 0,
       perfectBonus: 0,
       mergeBonus: 0,
-      comboBonus: 0
+      comboBonus: 0,
+      destructibleBonus: 0
     };
 
     this.weightBreakdown = {
@@ -421,6 +429,7 @@
     this.comboMultiplier = 1.0;
     this.comboTimer = 0;
     this.obstaclePassCount = 0;
+    this.destructibleCombo = 0;
   };
 
   proto.updateCombo = function(delta) {
@@ -444,6 +453,40 @@
     this.incrementCombo('damageFree', points);
   };
 
+  proto.registerDestructibleDestroyed = function(type, basePoints) {
+    this.destructiblesDestroyed++;
+    this.destructibleCombo++;
+
+    if (type === 'crate') this.cratesDestroyed++;
+    else if (type === 'barrel') this.barrelsDestroyed++;
+    else if (type === 'sign') this.signsDestroyed++;
+
+    var branchConfig = this.getBranchConfig(this.currentBranch);
+    var multiplier = branchConfig ? branchConfig.rewardMultiplier : 1.0;
+    var comboMult = this.comboCount > 0 ? this.comboMultiplier : 1.0;
+
+    var bonusPoints = 0;
+    if (this.destructibleCombo >= 3) {
+      bonusPoints = this.destructibleCombo * 20;
+    }
+
+    var weighted = Math.floor((basePoints + bonusPoints) * multiplier * comboMult);
+    this.score += weighted;
+    this.bonusScores.destructibleBonus += weighted;
+    this.destructibleScore += weighted;
+
+    var comboReason = type === 'barrel' ? 'explosion' : 'destruction';
+    this.incrementCombo(comboReason, basePoints);
+
+    return {
+      totalPoints: weighted,
+      basePoints: basePoints,
+      bonusPoints: bonusPoints,
+      destructibleCombo: this.destructibleCombo,
+      multiplier: multiplier * comboMult
+    };
+  };
+
   proto.getComboInfo = function() {
     return {
       comboCount: this.comboCount,
@@ -456,7 +499,9 @@
       damageFreeSegments: this.damageFreeSegments,
       comboBonusTotal: this.comboBonusTotal,
       comboBreakReason: this.comboBreakReason,
-      comboHistory: this.comboHistory.slice(-10)
+      comboHistory: this.comboHistory.slice(-10),
+      destructibleCombo: this.destructibleCombo,
+      destructiblesDestroyed: this.destructiblesDestroyed
     };
   };
 
@@ -667,7 +712,12 @@
       comboInfo: this.getComboInfo(),
       segmentScores: this.segmentScores,
       highScoreBreakthrough: this.highScoreBreakthrough,
-      midGameSettings: this.getMidGameSettings()
+      midGameSettings: this.getMidGameSettings(),
+      destructiblesDestroyed: this.destructiblesDestroyed,
+      cratesDestroyed: this.cratesDestroyed,
+      barrelsDestroyed: this.barrelsDestroyed,
+      signsDestroyed: this.signsDestroyed,
+      destructibleScore: this.destructibleScore
     };
   };
 

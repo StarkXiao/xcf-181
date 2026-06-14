@@ -353,6 +353,54 @@
         });
       }
     });
+
+    for (var i = 0; i < 6; i++) {
+      var smoke = this.scene.add.circle(
+        this.car.x + Phaser.Math.Between(-15, 15),
+        this.car.y - 10 + Phaser.Math.Between(-5, 5),
+        4 + Math.random() * 5,
+        0x888888
+      );
+      smoke.setDepth(48);
+      smoke.setAlpha(0.7);
+
+      this.scene.tweens.add({
+        targets: smoke,
+        x: smoke.x + Phaser.Math.Between(-30, 30),
+        y: smoke.y - 40 - Math.random() * 30,
+        scale: 2,
+        alpha: 0,
+        duration: 600 + Math.random() * 400,
+        ease: 'Quad.easeOut',
+        onComplete: (function(s) {
+          return function() { s.destroy(); };
+        })(smoke)
+      });
+    }
+
+    for (var j = 0; j < 4; j++) {
+      var spark = this.scene.add.circle(
+        this.car.x,
+        this.car.y,
+        2 + Math.random() * 2,
+        0xffaa00
+      );
+      spark.setDepth(49);
+
+      var angle = Math.random() * Math.PI * 2;
+      var speed = Phaser.Math.Between(60, 150);
+      this.scene.tweens.add({
+        targets: spark,
+        x: spark.x + Math.cos(angle) * speed,
+        y: spark.y + Math.sin(angle) * speed - 30,
+        alpha: 0,
+        duration: 300 + Math.random() * 200,
+        ease: 'Quad.easeOut',
+        onComplete: (function(sp) {
+          return function() { sp.destroy(); };
+        })(spark)
+      });
+    }
   };
 
   proto.slowDown = function(amount) {

@@ -28,6 +28,28 @@
     this.mergeCount = 0;
     this.hiddenBranchesFound = 0;
 
+    this.comboCount = 0;
+    this.comboMultiplier = 1.0;
+    this.maxCombo = 0;
+    this.comboTimer = 0;
+    this.comboTimeout = 3.0;
+    this.obstaclePassCount = 0;
+    this.totalObstaclePasses = 0;
+    this.damageFreeDistance = 0;
+    this.damageFreeSegments = 0;
+    this.damageFreeSegmentThreshold = 500;
+    this.lastDamageX = 0;
+    this.comboBonusTotal = 0;
+    this.comboHistory = [];
+    this.comboBreakReason = null;
+
+    this.destructiblesDestroyed = 0;
+    this.cratesDestroyed = 0;
+    this.barrelsDestroyed = 0;
+    this.signsDestroyed = 0;
+    this.destructibleScore = 0;
+    this.destructibleCombo = 0;
+
     this.bonusScores = {
       distance: 0,
       timeBonus: 0,
@@ -39,7 +61,9 @@
       riskBonus: 0,
       explorationBonus: 0,
       perfectBonus: 0,
-      mergeBonus: 0
+      mergeBonus: 0,
+      comboBonus: 0,
+      destructibleBonus: 0
     };
 
     this.weightBreakdown = {
@@ -50,6 +74,7 @@
       branchWeight: 0,
       mergeWeight: 0,
       hiddenWeight: 0,
+      comboWeight: 0,
       finalMultiplier: 1.0
     };
 
@@ -70,9 +95,133 @@
     this.lastSegmentX = 0;
     this.segmentInterval = 500;
 
-    this.previousBestStats = null;
-    this.scoreImprovements = {};
-    this.loadPreviousBest();
+    this.applyMidGameSettings = function(settings) {
+      var keys = Object.keys(settings || {});
+      for (var i = 0; i < keys.length; i++) {
+        if (this.midGameSettings.hasOwnProperty(keys[i])) {
+          this.midGameSettings[keys[i]] = settings[keys[i]];
+        }
+      }
+    };
+
+    this.getMidGameSettings = function() {
+      return {
+        difficulty: this.midGameSettings.difficulty,
+        sfxEnabled: this.midGameSettings.sfxEnabled,
+        controlMode: this.midGameSettings.controlMode,
+        cameraShake: this.midGameSettings.cameraShake,
+        showFPS: this.midGameSettings.showFPS
+      };
+    };
+
+    this.updateSegmentScore = function(currentX) {
+      if (currentX - this.lastSegmentX < this.segmentInterval) return;
+      var segment = {
+        startX: this.lastSegmentX,
+        endX: currentX,
+        score: this.score,
+        distance: this.distance,
+        branch: this.currentBranch,
+        combo: this.comboCount,
+        health: this.health,
+        timestamp: Date.now() - this.startTime
+      };
+      this.segmentScores.push(segment);
+      this.lastSegmentX = currentX;
+    };
+
+    this.checkHighScoreBreakthrough = function() {
+      var highScore = this.getHighScore();
+      if (highScore <= 0) return null;
+      var ratio = this.score / highScore;
+      var passedThresholds = [];
+      for (var i = 0; i < this.highScoreThresholds.length; i++) {
+        var threshold = this.highScoreThresholds[i];
+        if (ratio >= threshold) {
+          passedThresholds.push({
+            threshold: threshold,
+            label: this.getThresholdLabel(threshold),
+            percentage: Math.floor(threshold * 100)
+          });
+        }
+      }
+      if (passedThresholds.length > 0) {
+        var latest = passedThresholds[passedThresholds.length - 1];
+        if (!this.highScoreBreakthrough || this.highScoreBreakthrough.threshold < latest.threshold) {
+          this.highScoreBreakthrough = latest;
+          return latest;
+        }
+      }
+      return null;
+    };
+
+    this.getThresholdLabel = function(threshold) {
+      var labels = {
+        0.8: '接近高分',
+        0.9: '逼近纪录',
+        0.95: '差一点!',
+        1.0: '🏆 平纪录!',
+        1.05: '🌟 超越高分!',
+        1.1: '💎 大幅超越!'
+      };
+      return labels[threshold] || '突破';
+    };
+
+    this.getReplayComparisonData = function() {
+      var current = this.getDetailedStats();
+      var prev = this.previousBestStats;
+      if (!prev) {
+        return {
+          hasComparison: false,
+          current: current,
+          previous: null,
+          diff: null,
+          segmentComparison: null
+        };
+      }
+      var diff = {};
+      var numericKeys = ['totalScore', 'distance', 'maxSpeed', 'health', 'damageTaken', 'collectibleValue', 'mergeCount', 'hiddenBranchesFound', 'jumpCombo'];
+      for (var i = 0; i < numericKeys.length; i++) {
+        var key = numericKeys[i];
+        diff[key] = (current[key] || 0) - (prev[key] || 0);
+      }
+      diff.time = (prev.time || 0) - (current.time || 0);
+      var currentCombo = current.comboInfo || {};
+      var prevCombo = prev.comboInfo || {};
+      diff.maxCombo = (currentCombo.maxCombo || 0) - (prevCombo.maxCombo || 0);
+      diff.totalObstaclePasses = (currentCombo.totalObstaclePasses || 0) - (prevCombo.totalObstaclePasses || 0);
+      var currentBranches = Object.keys(current.branches || {}).length;
+      var prevBranches = Object.keys(prev.branches || {}).length;
+      diff.branchesExplored = currentBranches - prevBranches;
+      diff.perfectRun = current.perfectRun && !prev.perfectRun;
+      var segmentComparison = this.buildSegmentComparison(current, prev);
+      return {
+        hasComparison: true,
+        current: current,
+        previous: prev,
+        diff: diff,
+        segmentComparison: segmentComparison
+      };
+    };
+
+    this.buildSegmentComparison = function(current, prev) {
+      var currentSegments = this.segmentScores || [];
+      if (currentSegments.length === 0) return null;
+      var prevSegments = prev.segmentScores || [];
+      var maxLen = Math.max(currentSegments.length, prevSegments.length);
+      var result = [];
+      for (var i = 0; i < maxLen; i++) {
+        var cs = currentSegments[i] || null;
+        var ps = prevSegments[i] || null;
+        result.push({
+          index: i,
+          current: cs,
+          previous: ps,
+          scoreDiff: cs && ps ? cs.score - ps.score : null
+        });
+      }
+      return result;
+    };
   };
 
   var proto = MountainRacer.ScoreManager.prototype;
@@ -100,20 +249,21 @@
     var delta = Math.max(0, currentX - this.lastDistanceX);
     this.distance += delta;
 
-    if (currentX - this.lastSegmentX >= this.segmentInterval) {
-      this.segmentScores.push({
-        x: Math.floor(currentX),
-        score: this.score,
-        distance: Math.floor(this.distance),
-        branch: this.currentBranch,
-        combo: this.comboCount,
-        time: Date.now() - this.startTime
-      });
-      this.lastSegmentX = currentX;
+    if (this.comboCount > 0) {
+      this.damageFreeDistance += delta;
+      if (this.damageFreeDistance >= this.damageFreeSegmentThreshold) {
+        var segments = Math.floor(this.damageFreeDistance / this.damageFreeSegmentThreshold);
+        var extraSegments = segments - this.damageFreeSegments;
+        if (extraSegments > 0) {
+          this.damageFreeSegments = segments;
+          this.incrementCombo('damageFree', extraSegments * 80);
+        }
+      }
     }
 
     var branchConfig = this.getBranchConfig(this.currentBranch);
     var multiplier = branchConfig ? branchConfig.rewardMultiplier : 1.0;
+    var comboMult = this.comboCount > 0 ? this.comboMultiplier : 1.0;
 
     if (!this.branchDistances[this.currentBranch]) {
       this.branchDistances[this.currentBranch] = 0;
@@ -121,17 +271,25 @@
     this.branchDistances[this.currentBranch] += delta;
 
     var baseScore = Math.floor(delta * 0.1);
-    var weightedScore = Math.floor(baseScore * multiplier);
+    var weightedScore = Math.floor(baseScore * multiplier * comboMult);
     this.score += weightedScore;
     this.lastDistanceX = currentX;
 
     this.bonusScores.distance = Math.floor(this.distance * 0.1);
+
+    this.updateSegmentScore(currentX);
+
+    var breakthrough = this.checkHighScoreBreakthrough();
+    if (breakthrough) {
+      this.highScoreBreakthrough = breakthrough;
+    }
   };
 
   proto.addBonusScore = function(points, type) {
     var branchConfig = this.getBranchConfig(this.currentBranch);
     var multiplier = branchConfig ? branchConfig.rewardMultiplier : 1.0;
-    var weightedPoints = Math.floor(points * multiplier);
+    var comboMult = this.comboCount > 0 ? this.comboMultiplier : 1.0;
+    var weightedPoints = Math.floor(points * multiplier * comboMult);
     this.score += weightedPoints;
 
     if (type && this.bonusScores.hasOwnProperty(type)) {
@@ -145,7 +303,8 @@
   proto.addCollectibleScore = function(value, type) {
     var branchConfig = this.getBranchConfig(this.currentBranch);
     var multiplier = branchConfig ? branchConfig.rewardMultiplier : 1.0;
-    var weighted = Math.floor(value * multiplier);
+    var comboMult = this.comboCount > 0 ? this.comboMultiplier : 1.0;
+    var weighted = Math.floor(value * multiplier * comboMult);
     this.score += weighted;
     this.bonusScores.collectibleBonus += weighted;
     this.collectibleValue += weighted;
@@ -156,6 +315,12 @@
     this.health = Math.max(0, this.health - amount);
     this.damageTaken += amount;
     this.perfectRun = false;
+    if (this.comboCount > 0) {
+      this.breakCombo('damage');
+    }
+    this.damageFreeDistance = 0;
+    this.damageFreeSegments = 0;
+    this.lastDamageX = this.distance;
     if (this.health <= 0) {
       this.isGameOver = true;
     }
@@ -190,11 +355,13 @@
 
   proto.getBranchConfig = function(branchId) {
     var config = MountainRacer.LEVEL_CONFIGS[this.level];
-    if (!config || !config.branches) return null;
+    if (!config || !config.branches) {
+      return { rewardMultiplier: 1.0, riskLevel: 1 };
+    }
     for (var i = 0; i < config.branches.length; i++) {
       if (config.branches[i].id === branchId) return config.branches[i];
     }
-    return null;
+    return { rewardMultiplier: 1.0, riskLevel: 1 };
   };
 
   proto.updateStats = function(carPhysics) {
@@ -212,15 +379,148 @@
         this.jumpCombo++;
         var stylePoints = Math.floor(this.airTime * 50);
         this.addBonusScore(stylePoints, 'styleBonus');
+        var airComboPoints = 0;
+        if (this.airTime > 1.0) {
+          airComboPoints = Math.floor((this.airTime - 1.0) * 80);
+          this.incrementCombo('airTime', airComboPoints);
+        } else if (this.airTime > 0.7) {
+          airComboPoints = Math.floor(this.airTime * 30);
+          this.incrementCombo('airTime', airComboPoints);
+        }
       }
       this.airTime = 0;
     }
+  };
+
+  proto.incrementCombo = function(reason, points) {
+    this.comboCount++;
+    this.comboTimer = this.comboTimeout;
+    this.comboMultiplier = 1.0 + (this.comboCount - 1) * 0.15;
+    if (this.comboMultiplier > 5.0) this.comboMultiplier = 5.0;
+    if (this.comboCount > this.maxCombo) {
+      this.maxCombo = this.comboCount;
+    }
+
+    var bonusPoints = Math.floor(points * this.comboMultiplier);
+    this.score += bonusPoints;
+    this.bonusScores.comboBonus += bonusPoints;
+    this.comboBonusTotal += bonusPoints;
+
+    this.comboHistory.push({
+      reason: reason,
+      comboCount: this.comboCount,
+      multiplier: this.comboMultiplier,
+      points: bonusPoints,
+      distance: Math.floor(this.distance),
+      time: Date.now() - this.startTime
+    });
+
+    if (reason === 'obstaclePass') {
+      this.totalObstaclePasses++;
+    }
+
+    return bonusPoints;
+  };
+
+  proto.breakCombo = function(reason) {
+    if (this.comboCount <= 0) return;
+    this.comboBreakReason = reason;
+    this.comboCount = 0;
+    this.comboMultiplier = 1.0;
+    this.comboTimer = 0;
+    this.obstaclePassCount = 0;
+    this.destructibleCombo = 0;
+  };
+
+  proto.updateCombo = function(delta) {
+    if (this.comboCount <= 0) return;
+    var dt = delta / 1000;
+    this.comboTimer -= dt;
+    if (this.comboTimer <= 0) {
+      this.breakCombo('timeout');
+    }
+  };
+
+  proto.registerObstaclePass = function() {
+    this.obstaclePassCount++;
+    var points = 30 + this.obstaclePassCount * 15;
+    this.incrementCombo('obstaclePass', points);
+  };
+
+  proto.registerDamageFreeSegment = function() {
+    this.damageFreeSegments++;
+    var points = this.damageFreeSegments * 80;
+    this.incrementCombo('damageFree', points);
+  };
+
+  proto.registerDestructibleDestroyed = function(type, basePoints) {
+    this.destructiblesDestroyed++;
+    this.destructibleCombo++;
+
+    if (type === 'crate') this.cratesDestroyed++;
+    else if (type === 'barrel') this.barrelsDestroyed++;
+    else if (type === 'sign') this.signsDestroyed++;
+
+    var branchConfig = this.getBranchConfig(this.currentBranch);
+    var multiplier = branchConfig ? branchConfig.rewardMultiplier : 1.0;
+    var comboMult = this.comboCount > 0 ? this.comboMultiplier : 1.0;
+
+    var bonusPoints = 0;
+    if (this.destructibleCombo >= 3) {
+      bonusPoints = this.destructibleCombo * 20;
+    }
+
+    var weighted = Math.floor((basePoints + bonusPoints) * multiplier * comboMult);
+    this.score += weighted;
+    this.bonusScores.destructibleBonus += weighted;
+    this.destructibleScore += weighted;
+
+    var comboReason = type === 'barrel' ? 'explosion' : 'destruction';
+    this.incrementCombo(comboReason, basePoints);
+
+    return {
+      totalPoints: weighted,
+      basePoints: basePoints,
+      bonusPoints: bonusPoints,
+      destructibleCombo: this.destructibleCombo,
+      multiplier: multiplier * comboMult
+    };
+  };
+
+  proto.getComboInfo = function() {
+    return {
+      comboCount: this.comboCount,
+      comboMultiplier: this.comboMultiplier,
+      maxCombo: this.maxCombo,
+      comboTimer: this.comboTimer,
+      obstaclePassCount: this.obstaclePassCount,
+      totalObstaclePasses: this.totalObstaclePasses,
+      damageFreeDistance: Math.floor(this.damageFreeDistance),
+      damageFreeSegments: this.damageFreeSegments,
+      comboBonusTotal: this.comboBonusTotal,
+      comboBreakReason: this.comboBreakReason,
+      comboHistory: this.comboHistory.slice(-10),
+      destructibleCombo: this.destructibleCombo,
+      destructiblesDestroyed: this.destructiblesDestroyed
+    };
   };
 
   proto.checkLevelComplete = function(currentX) {
     if (this.isComplete) return false;
     if (currentX >= this.levelLength - 200) {
       this.isComplete = true;
+
+      var config = MountainRacer.LEVEL_CONFIGS[this.level];
+      if (!config) return false;
+      var weightConfig = config.weightConfig || {
+        baseMultiplier: 1.0,
+        riskWeightPerLevel: 0.15,
+        explorationWeightPerBranch: 0.08,
+        perfectRunWeight: 0.25,
+        lowDamageWeight: 0.1,
+        mergeWeight: 0.05,
+        hiddenBranchBonus: 0.2
+      };
 
       var elapsed = this.getElapsedTime();
       var timeBonus = Math.floor(Math.max(0, 300 - elapsed) * 10);
@@ -230,14 +530,15 @@
       var branchBonus = 0;
       var hiddenBonus = 0;
       var uniqueBranches = Object.keys(this.branchDistances);
-      var totalBranches = (MountainRacer.LEVEL_CONFIGS[this.level] && MountainRacer.LEVEL_CONFIGS[this.level].branches) ?
-        MountainRacer.LEVEL_CONFIGS[this.level].branches.length : 1;
+      var totalBranches = config.branches ? config.branches.length : 1;
+      var hiddenBranchesVisited = 0;
 
       for (var i = 0; i < uniqueBranches.length; i++) {
         var branchId = uniqueBranches[i];
         var branchCfg = this.getBranchConfig(branchId);
         if (branchCfg && branchCfg.hidden) {
           hiddenBonus += 500;
+          hiddenBranchesVisited++;
         }
       }
       branchBonus += (uniqueBranches.length - 1) * 200;
@@ -250,6 +551,8 @@
       var avgRiskLevel = 1;
       var totalBranchDist = 0;
       var weightedRisk = 0;
+      var maxRiskLevel = 1;
+
       for (var bi = 0; bi < uniqueBranches.length; bi++) {
         var bid = uniqueBranches[bi];
         var bCfg = this.getBranchConfig(bid);
@@ -257,6 +560,7 @@
         if (bCfg) {
           weightedRisk += (bCfg.riskLevel || 1) * bDist;
           totalBranchDist += bDist;
+          maxRiskLevel = Math.max(maxRiskLevel, bCfg.riskLevel || 1);
         }
       }
       if (totalBranchDist > 0) {
@@ -279,16 +583,47 @@
         mergeBonus = this.branchHistory.length * 150;
       }
 
-      this.weightBreakdown.baseMultiplier = 1.0;
-      this.weightBreakdown.riskWeight = (avgRiskLevel - 1) * 0.15;
-      this.weightBreakdown.explorationWeight = explorationRatio * 0.2;
-      this.weightBreakdown.perfectWeight = this.perfectRun ? 0.25 : (this.damageTaken < 30 ? 0.1 : 0);
-      this.weightBreakdown.branchWeight = (uniqueBranches.length - 1) * 0.08;
+      var hiddenBonusExtra = hiddenBranchesVisited * 200;
+      if (hiddenBranchesVisited > 0) {
+        explorationBonus += hiddenBonusExtra;
+      }
+
+      this.weightBreakdown.baseMultiplier = weightConfig.baseMultiplier;
+      this.weightBreakdown.riskWeight = (avgRiskLevel - 1) * weightConfig.riskWeightPerLevel;
+      this.weightBreakdown.explorationWeight = explorationRatio * weightConfig.explorationWeightPerBranch * uniqueBranches.length;
+      this.weightBreakdown.perfectWeight = this.perfectRun ? weightConfig.perfectRunWeight :
+        (this.damageTaken < 30 ? weightConfig.lowDamageWeight : 0);
+      this.weightBreakdown.branchWeight = (uniqueBranches.length - 1) * weightConfig.explorationWeightPerBranch;
+      this.weightBreakdown.mergeWeight = this.mergeCount * weightConfig.mergeWeight;
+      this.weightBreakdown.hiddenWeight = hiddenBranchesVisited * weightConfig.hiddenBranchBonus;
+      this.weightBreakdown.comboWeight = this.maxCombo * 0.03;
       this.weightBreakdown.finalMultiplier = 1.0 +
         this.weightBreakdown.riskWeight +
         this.weightBreakdown.explorationWeight +
         this.weightBreakdown.perfectWeight +
-        this.weightBreakdown.branchWeight;
+        this.weightBreakdown.branchWeight +
+        this.weightBreakdown.mergeWeight +
+        this.weightBreakdown.hiddenWeight +
+        this.weightBreakdown.comboWeight;
+
+      this.weightBreakdown.avgRiskLevel = avgRiskLevel;
+      this.weightBreakdown.maxRiskLevel = maxRiskLevel;
+      this.weightBreakdown.uniqueBranches = uniqueBranches.length;
+      this.weightBreakdown.totalBranches = totalBranches;
+      this.weightBreakdown.hiddenBranches = hiddenBranchesVisited;
+      this.weightBreakdown.mergeCount = this.mergeCount;
+      this.weightBreakdown.maxCombo = this.maxCombo;
+      this.weightBreakdown.totalObstaclePasses = this.totalObstaclePasses;
+      this.weightBreakdown.damageFreeSegments = this.damageFreeSegments;
+
+      var comboBonus = this.bonusScores.comboBonus;
+      var comboFinishBonus = 0;
+      if (this.maxCombo >= 10) {
+        comboFinishBonus = this.maxCombo * 50;
+      } else if (this.maxCombo >= 5) {
+        comboFinishBonus = this.maxCombo * 25;
+      }
+      this.bonusScores.comboBonus += comboFinishBonus;
 
       this.bonusScores.timeBonus = timeBonus;
       this.bonusScores.healthBonus = healthBonus;
@@ -301,18 +636,54 @@
       this.bonusScores.mergeBonus = mergeBonus;
 
       var totalBonus = timeBonus + healthBonus + branchBonus + hiddenBonus +
-        styleBonus + riskBonus + explorationBonus + perfectBonus + mergeBonus;
-      this.score += Math.floor(totalBonus * this.weightBreakdown.finalMultiplier);
+        styleBonus + riskBonus + explorationBonus + perfectBonus + mergeBonus + comboBonus + comboFinishBonus;
+      var weightedBonus = Math.floor(totalBonus * this.weightBreakdown.finalMultiplier);
+      this.score += weightedBonus;
 
+      this.calculateBranchScoreBreakdown();
       this.calculateScoreImprovements();
-      this.saveBestStats();
 
       this.saveHighScore();
+      this.saveBestStats();
       this.saveBranchProgress();
 
       return true;
     }
     return false;
+  };
+
+  proto.calculateBranchScoreBreakdown = function() {
+    var uniqueBranches = Object.keys(this.branchDistances);
+
+    for (var i = 0; i < uniqueBranches.length; i++) {
+      var branchId = uniqueBranches[i];
+      var branchCfg = this.getBranchConfig(branchId);
+      var distance = this.branchDistances[branchId] || 0;
+      var baseScore = Math.floor(distance * 0.1);
+      var multiplier = branchCfg ? branchCfg.rewardMultiplier : 1.0;
+      var weightedScore = Math.floor(baseScore * multiplier);
+
+      var riskContribution = 0;
+      var explorationContribution = 0;
+
+      if (branchCfg) {
+        riskContribution = Math.floor(baseScore * ((branchCfg.riskLevel - 1) * 0.1));
+        if (branchCfg.hidden) {
+          explorationContribution = Math.floor(baseScore * 0.2);
+        }
+      }
+
+      this.branchScoreBreakdown[branchId] = {
+        distance: Math.floor(distance),
+        baseScore: baseScore,
+        multiplier: multiplier,
+        weightedScore: weightedScore,
+        riskContribution: riskContribution,
+        explorationContribution: explorationContribution,
+        total: weightedScore + riskContribution + explorationContribution,
+        config: branchCfg
+      };
+    }
   };
 
   proto.getScore = function() {
@@ -334,8 +705,19 @@
       damageTaken: this.damageTaken,
       collectibleValue: this.collectibleValue,
       weightBreakdown: this.weightBreakdown,
+      branchScoreBreakdown: this.branchScoreBreakdown,
+      mergeCount: this.mergeCount,
+      hiddenBranchesFound: this.hiddenBranchesFound,
+      totalWeightedMultiplier: this.totalWeightedMultiplier,
+      comboInfo: this.getComboInfo(),
       segmentScores: this.segmentScores,
-      midGameSettings: this.midGameSettings
+      highScoreBreakthrough: this.highScoreBreakthrough,
+      midGameSettings: this.getMidGameSettings(),
+      destructiblesDestroyed: this.destructiblesDestroyed,
+      cratesDestroyed: this.cratesDestroyed,
+      barrelsDestroyed: this.barrelsDestroyed,
+      signsDestroyed: this.signsDestroyed,
+      destructibleScore: this.destructibleScore
     };
   };
 
@@ -451,10 +833,15 @@
         health: current.health,
         perfectRun: current.perfectRun,
         maxSpeed: current.maxSpeed,
-        maxCombo: 0,
+        maxCombo: current.comboInfo ? current.comboInfo.maxCombo : 0,
         branches: Object.keys(current.branches || {}).length,
         timestamp: Date.now(),
-        win: this.isComplete
+        win: this.isComplete,
+        segmentScores: current.segmentScores || [],
+        bonusScores: current.bonusScores || {},
+        damageTaken: current.damageTaken || 0,
+        collectibleValue: current.collectibleValue || 0,
+        jumpCombo: current.jumpCombo || 0
       };
 
       history.unshift(runRecord);
@@ -536,6 +923,21 @@
       });
     }
 
+    var currentCombo = current.comboInfo ? current.comboInfo.maxCombo : 0;
+    var prevCombo = prev.comboInfo ? prev.comboInfo.maxCombo : 0;
+    var comboDiff = currentCombo - prevCombo;
+    if (comboDiff > 0) {
+      improvements.push({
+        label: '最大连击',
+        current: currentCombo,
+        previous: prevCombo,
+        diff: comboDiff,
+        percent: ((comboDiff / Math.max(1, prevCombo)) * 100).toFixed(1),
+        icon: '🔥'
+      });
+      newRecords.push('最大连击');
+    }
+
     var currentBranches = Object.keys(current.branches || {}).length;
     var prevBranches = Object.keys(prev.branches || {}).length;
     var branchDiff = currentBranches - prevBranches;
@@ -563,6 +965,20 @@
         isBoolean: true
       });
       newRecords.push('完美通关');
+    }
+
+    var currentObstacles = current.comboInfo ? current.comboInfo.totalObstaclePasses : 0;
+    var prevObstacles = prev.comboInfo ? prev.comboInfo.totalObstaclePasses : 0;
+    var obstacleDiff = currentObstacles - prevObstacles;
+    if (obstacleDiff > 0) {
+      improvements.push({
+        label: '连续过障',
+        current: currentObstacles,
+        previous: prevObstacles,
+        diff: obstacleDiff,
+        percent: ((obstacleDiff / Math.max(1, prevObstacles)) * 100).toFixed(1),
+        icon: '🎯'
+      });
     }
 
     this.scoreImprovements = {
@@ -603,14 +1019,9 @@
       'C': { label: 'C 级', color: '#2196f3', desc: '继续努力，你可以做得更好！', stars: 2 }
     };
 
-    var info = gradeInfo[grade];
-
     return {
       grade: grade,
-      label: info.label,
-      color: info.color,
-      desc: info.desc,
-      stars: info.stars,
+      ...gradeInfo[grade],
       scoreBreakdown: this.getScoreDimensionBreakdown()
     };
   };
@@ -622,14 +1033,14 @@
     var totalScore = Math.max(1, stats.totalScore);
     var speedScore = Math.floor((stats.maxSpeed / 200) * 100);
     var explorationScore = Math.min(100, Object.keys(stats.branches || {}).length * 25);
-    var skillScore = 0;
+    var skillScore = Math.min(100, (stats.comboInfo ? stats.comboInfo.maxCombo : 0) * 10);
     var riskScore = Math.min(100, ((stats.weightBreakdown || {}).avgRiskLevel || 1) * 30);
     var survivalScore = Math.floor((stats.health / 100) * 100);
     var collectionScore = Math.min(100, (stats.collectibleValue / 500) * 100);
 
     var speedPct = (bonus.distance || 0) / totalScore;
     var explorationPct = ((bonus.branchBonus || 0) + (bonus.explorationBonus || 0)) / totalScore;
-    var skillPct = (bonus.styleBonus || 0) / totalScore;
+    var skillPct = ((bonus.comboBonus || 0) + (bonus.styleBonus || 0)) / totalScore;
     var riskPct = (bonus.riskBonus || 0) / totalScore;
     var survivalPct = (bonus.healthBonus || 0) / totalScore;
     var collectionPct = (bonus.collectibleBonus || 0) / totalScore;
@@ -723,10 +1134,6 @@
       var key = 'mountain_racer_settings';
       localStorage.setItem(key, JSON.stringify(settings));
     } catch (e) {}
-  };
-
-  proto.updateMidGameSettings = function(key, value) {
-    this.midGameSettings[key] = value;
   };
 
   proto.destroy = function() {};

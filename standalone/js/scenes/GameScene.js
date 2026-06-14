@@ -977,6 +977,66 @@
         this.scoreManager.addBonusScore(50, 'styleBonus');
         this.rampCooldown = 500;
         this.showFloatingText(this.carPhysics.car.x, this.carPhysics.car.y - 60, '+50 起跳!', 0xffd700);
+      } else if (collision.destructible) {
+        var destResult = this.scoreManager.registerDestructibleDestroyed(
+          collision.type,
+          collision.scoreReward
+        );
+
+        this.carPhysics.slowDown(collision.slowdown);
+
+        var shakeIntensity = 4;
+        var shakeDuration = 150;
+        var damageAmount = collision.damage || 0;
+        var destLabel = '';
+        var destColor = 0x4caf50;
+
+        if (collision.type === 'crate') {
+          destLabel = '📦 木箱';
+          destColor = 0x8b5a2b;
+        } else if (collision.type === 'barrel') {
+          destLabel = '🛢️ 油桶爆炸';
+          destColor = 0xff6600;
+          shakeIntensity = 10;
+          shakeDuration = 350;
+          damageAmount = collision.damage || 25;
+        } else if (collision.type === 'sign') {
+          destLabel = '🪧 路牌';
+          destColor = 0xffd700;
+        }
+
+        if (damageAmount > 0) {
+          this.carPhysics.applyDamage();
+          var destDead = this.scoreManager.takeDamage(damageAmount);
+          this.damageCooldown = collision.type === 'barrel' ? 1000 : 600;
+          this.screenShake(shakeIntensity, shakeDuration);
+
+          if (this.scoreManager.comboBreakReason === 'damage' && collision.type !== 'sign') {
+            this.showFloatingText(carX, this.carPhysics.car.y - 100, '💥 连击中断!', 0xf44336);
+          }
+
+          if (destDead) {
+            this.gameOver = true;
+            this.scoreManager.saveHighScore();
+            this.showGameOver(false, collision.type === 'barrel' ? '油桶爆炸损毁' : '赛车损毁');
+            return;
+          }
+        } else {
+          this.damageCooldown = 300;
+          this.screenShake(shakeIntensity, shakeDuration);
+        }
+
+        if (this.comboTextCooldown <= 0) {
+          var destDisplay = destLabel + ' +' + destResult.totalPoints;
+          if (destResult.bonusPoints > 0) {
+            destDisplay += ' (连锁+' + destResult.bonusPoints + ')';
+          }
+          if (destResult.destructibleCombo >= 3) {
+            destDisplay += ' x' + destResult.destructibleCombo + '连破!';
+          }
+          this.showFloatingText(carX, this.carPhysics.car.y - 70, destDisplay, destColor);
+          this.comboTextCooldown = collision.type === 'barrel' ? 500 : 300;
+        }
       }
     }
 
