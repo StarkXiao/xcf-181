@@ -58,6 +58,8 @@
     this.activeSpeedBoost = null;
     this.triggeredEvents = {};
     this.speedBoostEndTime = 0;
+    this.lastObstacleCheckX = 0;
+    this.comboTextCooldown = 0;
 
     this.loadUnlockedBranches();
   };
@@ -110,6 +112,12 @@
       fontSize: '15px',
       fontWeight: 'bold',
       color: '#00e5ff'
+    }).setScrollFactor(0).setDepth(501);
+
+    this.comboText = this.add.text(width / 2 - 60, 50, '', {
+      fontSize: '14px',
+      fontWeight: 'bold',
+      color: '#ff9800'
     }).setScrollFactor(0).setDepth(501);
 
     var healthX = width / 2 + 80;
@@ -394,9 +402,26 @@
     }
 
     var carX = this.carPhysics.car.x;
+    var prevComboCount = this.scoreManager.comboCount;
     this.scoreManager.addDistanceScore(carX);
     this.scoreManager.updateStats(this.carPhysics);
+    this.scoreManager.updateCombo(delta);
+    this.comboTextCooldown = Math.max(0, this.comboTextCooldown - delta);
 
+    if (this.scoreManager.comboCount > prevComboCount && this.scoreManager.comboCount > 1) {
+      var lastHistory = this.scoreManager.comboHistory[this.scoreManager.comboHistory.length - 1];
+      if (lastHistory && lastHistory.reason === 'airTime' && this.comboTextCooldown <= 0) {
+        this.showFloatingText(carX, this.carPhysics.car.y - 60,
+          '🦘 x' + this.scoreManager.comboCount + ' 腾空连击!', 0x00e5ff);
+        this.comboTextCooldown = 400;
+      } else if (lastHistory && lastHistory.reason === 'damageFree' && this.comboTextCooldown <= 0) {
+        this.showFloatingText(carX, this.carPhysics.car.y - 60,
+          '🛡️ x' + this.scoreManager.comboCount + ' 无伤连击!', 0x4caf50);
+        this.comboTextCooldown = 400;
+      }
+    }
+
+    this.checkObstaclePass(carX);
     this.checkBranchPoint(carX);
     this.checkHiddenUnlocks();
     this.checkAutoMerge(carX);
@@ -412,6 +437,10 @@
         this.damageCooldown = 800;
         this.screenShake(6, 200);
 
+        if (this.scoreManager.comboBreakReason === 'damage') {
+          this.showFloatingText(carX, this.carPhysics.car.y - 100, '💥 连击中断!', 0xf44336);
+        }
+
         if (dead) {
           this.gameOver = true;
           this.scoreManager.saveHighScore();
@@ -420,6 +449,12 @@
         }
       } else if (collision.type === 'mud') {
         this.carPhysics.slowDown(collision.slowdown);
+        this.scoreManager.registerObstaclePass();
+        if (this.comboTextCooldown <= 0) {
+          this.showFloatingText(carX, this.carPhysics.car.y - 60,
+            '🔥 x' + this.scoreManager.comboCount + ' 连击!', 0xff9800);
+          this.comboTextCooldown = 300;
+        }
       } else if (collision.type === 'ramp' && collision.boost) {
         this.carPhysics.vy = Math.min(this.carPhysics.vy, -450);
         this.carPhysics.vx *= 1.15;
@@ -434,6 +469,9 @@
       var deadDanger = this.scoreManager.takeDamage(dangerResult.damage);
       this.damageCooldown = 500;
       this.screenShake(4, 150);
+      if (this.scoreManager.comboBreakReason === 'damage') {
+        this.showFloatingText(carX, this.carPhysics.car.y - 100, '💥 连击中断!', 0xf44336);
+      }
       if (dangerResult.message) {
         this.showFloatingText(carX, this.carPhysics.car.y - 80, dangerResult.message, 0xf44336);
       }
@@ -491,6 +529,43 @@
       this.showBranchSelect(bpInfo);
       this.lastBranchPoint = bpInfo.point.x;
     }
+  };
+
+  proto.checkObstaclePass = function(carX) {
+    if (carX - this.lastObstacleCheckX < 30) return;
+
+    var carBounds = this.carPhysics.getBounds();
+    var nearMissRange = 40;
+    var passed = false;
+    var obstacles = this.obstacles.obstacles || [];
+
+    for (var i = 0; i < obstacles.length; i++) {
+      var obs = obstacles[i];
+      if (obs.getData('hit')) continue;
+      var hitbox = obs.getData('hitbox');
+      if (!hitbox) continue;
+
+      var hb = hitbox.getBounds();
+      if (carX > hb.x + hb.width && carX < hb.x + hb.width + nearMissRange) {
+        var distY = Math.abs(carBounds.centerY - hb.centerY);
+        if (distY < hb.height + 30) {
+          passed = true;
+          break;
+        }
+      }
+    }
+
+    if (passed) {
+      this.scoreManager.registerObstaclePass();
+      if (this.comboTextCooldown <= 0) {
+        var comboInfo = this.scoreManager.getComboInfo();
+        this.showFloatingText(carX, this.carPhysics.car.y - 60,
+          '🔥 x' + comboInfo.comboCount + ' 连击!', 0xff9800);
+        this.comboTextCooldown = 400;
+      }
+    }
+
+    this.lastObstacleCheckX = carX;
   };
 
   proto.showBranchSelect = function(bpInfo) {
@@ -1297,6 +1372,19 @@
       multiplierDisplay += ' ' + riskText;
     }
     this.multiplierText.setText(multiplierDisplay);
+
+    var comboInfo = this.scoreManager.getComboInfo();
+    if (comboInfo.comboCount > 0) {
+      var comboLabel = '🔥 x' + comboInfo.comboCount;
+      if (comboInfo.comboMultiplier > 1.0) {
+        comboLabel += ' (x' + comboInfo.comboMultiplier.toFixed(1) + ')';
+      }
+      this.comboText.setText(comboLabel);
+      this.comboText.setColor('#ff9800');
+      this.comboText.setAlpha(1);
+    } else {
+      this.comboText.setAlpha(0);
+    }
 
     var uniqueBranches = Object.keys(this.scoreManager.branchDistances).length;
     var totalBranches = this.terrain.config.branches ? this.terrain.config.branches.length : 1;

@@ -83,7 +83,7 @@
 
   proto.createResultPanel = function(width, height) {
     var panelW = 420;
-    var panelH = this.win && this.detailedStats ? 600 : 430;
+    var panelH = this.win && this.detailedStats ? 700 : 430;
 
     var shadow = this.add.graphics();
     shadow.fillStyle(0x000000, 0.4);
@@ -249,7 +249,8 @@
       { label: '风格奖励', value: bonus.styleBonus || 0, color: '#ff9800' },
       { label: '风险奖励', value: bonus.riskBonus || 0, color: '#f44336' },
       { label: '探索奖励', value: bonus.explorationBonus || 0, color: '#00bcd4' },
-      { label: '汇合奖励', value: bonus.mergeBonus || 0, color: '#8bc34a' }
+      { label: '汇合奖励', value: bonus.mergeBonus || 0, color: '#8bc34a' },
+      { label: '连击奖励', value: bonus.comboBonus || 0, color: '#ff5722' }
     ];
 
     var hasPerfect = bonus.perfectBonus > 0 || bonus.hiddenBonus > 0;
@@ -315,11 +316,12 @@
     }).setOrigin(1, 0.5);
 
     var extraStatsY = totalY + 45;
+    var comboInfo = stats.comboInfo || {};
     var extraStats = [
       { label: '最高时速', value: (stats.maxSpeed || 0) + ' km/h', icon: '🚗' },
-      { label: '跳跃连击', value: (stats.jumpCombo || 0) + ' 次', icon: '🦘' },
+      { label: '最大连击', value: (comboInfo.maxCombo || 0) + ' 次', icon: '🔥' },
       { label: '行驶距离', value: Math.floor(stats.distance || 0) + ' m', icon: '📏' },
-      { label: '汇合次数', value: (stats.mergeCount || 0) + ' 次', icon: '🔄' }
+      { label: '连续过障', value: (comboInfo.totalObstaclePasses || 0) + ' 次', icon: '🎯' }
     ];
 
     for (var j = 0; j < extraStats.length; j++) {
@@ -393,6 +395,86 @@
         }).setOrigin(0, 0.5);
       }
     }
+
+    if (comboInfo.maxCombo > 0) {
+      var comboSectionY = extraStatsY + 65;
+      if (stats.branches && Object.keys(stats.branches).length > 1) {
+        comboSectionY = extraStatsY + 65 + (Object.keys(stats.branches).length + 1) * 18 + 20;
+      }
+
+      this.add.text(width / 2 - panelW / 2 + 15, comboSectionY, '🔥 连击系统明细', {
+        fontSize: '13px',
+        fontWeight: 'bold',
+        color: '#ff5722'
+      }).setOrigin(0, 0.5);
+
+      var comboItems = [
+        { label: '最高连击', value: comboInfo.maxCombo + ' 次', icon: '🔥' },
+        { label: '连击总分', value: '+' + comboInfo.comboBonusTotal, icon: '⭐' },
+        { label: '连续过障', value: comboInfo.totalObstaclePasses + ' 次', icon: '🎯' },
+        { label: '无伤路段', value: comboInfo.damageFreeSegments + ' 段', icon: '🛡️' }
+      ];
+
+      for (var ci = 0; ci < comboItems.length; ci++) {
+        var cItem = comboItems[ci];
+        var cx = width / 2 - panelW / 2 + 15 + ci * (panelW / 4);
+
+        var cBg = this.add.graphics();
+        cBg.fillStyle(0xfff3e0, 1);
+        cBg.fillRoundedRect(cx, comboSectionY + 18, panelW / 4 - 5, 40, 6);
+        cBg.lineStyle(1, 0xff5722, 0.3);
+        cBg.strokeRoundedRect(cx, comboSectionY + 18, panelW / 4 - 5, 40, 6);
+
+        this.add.text(cx + (panelW / 4 - 5) / 2, comboSectionY + 26, cItem.icon, {
+          fontSize: '14px'
+        }).setOrigin(0.5);
+
+        this.add.text(cx + (panelW / 4 - 5) / 2, comboSectionY + 44, cItem.value, {
+          fontSize: '10px',
+          fontWeight: 'bold',
+          color: '#ff5722'
+        }).setOrigin(0.5);
+      }
+
+      if (comboInfo.comboHistory && comboInfo.comboHistory.length > 0) {
+        var historyY = comboSectionY + 68;
+        this.add.text(width / 2 - panelW / 2 + 15, historyY, '📋 近期连击', {
+          fontSize: '11px',
+          color: '#999999'
+        }).setOrigin(0, 0.5);
+
+        var reasonLabels = {
+          'airTime': '🦘 腾空',
+          'obstaclePass': '🎯 过障',
+          'damageFree': '🛡️ 无伤'
+        };
+
+        var displayCount = Math.min(comboInfo.comboHistory.length, 5);
+        for (var hi = 0; hi < displayCount; hi++) {
+          var histEntry = comboInfo.comboHistory[comboInfo.comboHistory.length - displayCount + hi];
+          var hy = historyY + 18 + hi * 16;
+          var reasonLabel = reasonLabels[histEntry.reason] || histEntry.reason;
+
+          this.add.text(width / 2 - panelW / 2 + 25, hy, reasonLabel, {
+            fontSize: '10px',
+            color: '#888888'
+          }).setOrigin(0, 0.5);
+
+          this.add.text(width / 2 - panelW / 2 + 100, hy,
+            'x' + histEntry.comboCount + ' → +' + histEntry.points, {
+            fontSize: '10px',
+            fontWeight: 'bold',
+            color: '#ff9800'
+          }).setOrigin(0, 0.5);
+
+          this.add.text(width / 2 + panelW / 2 - 25, hy,
+            Math.floor(histEntry.distance) + 'm', {
+            fontSize: '10px',
+            color: '#bbbbbb'
+          }).setOrigin(1, 0.5);
+        }
+      }
+    }
   };
 
   proto.createWeightVisualization = function(width, startY, panelW, weightBreakdown) {
@@ -446,6 +528,14 @@
         icon: '✨'
       });
     }
+    if (weightBreakdown.comboWeight > 0) {
+      weightItems.push({
+        label: '连击加成',
+        value: weightBreakdown.comboWeight,
+        color: '#ff5722',
+        icon: '🔥'
+      });
+    }
 
     if (weightItems.length === 0) return;
 
@@ -496,7 +586,7 @@
   proto.createButtons = function(width, height) {
     var btnW = 160;
     var btnH = 48;
-    var btnY = height / 2 + (this.win && this.detailedStats ? 260 : 160);
+    var btnY = height / 2 + (this.win && this.detailedStats ? 310 : 160);
     var gap = 20;
     var totalW = btnW * 3 + gap * 2;
     var startX = width / 2 - totalW / 2 + btnW / 2;

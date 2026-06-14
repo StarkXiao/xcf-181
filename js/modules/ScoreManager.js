@@ -28,6 +28,21 @@
     this.mergeCount = 0;
     this.hiddenBranchesFound = 0;
 
+    this.comboCount = 0;
+    this.comboMultiplier = 1.0;
+    this.maxCombo = 0;
+    this.comboTimer = 0;
+    this.comboTimeout = 3.0;
+    this.obstaclePassCount = 0;
+    this.totalObstaclePasses = 0;
+    this.damageFreeDistance = 0;
+    this.damageFreeSegments = 0;
+    this.damageFreeSegmentThreshold = 500;
+    this.lastDamageX = 0;
+    this.comboBonusTotal = 0;
+    this.comboHistory = [];
+    this.comboBreakReason = null;
+
     this.bonusScores = {
       distance: 0,
       timeBonus: 0,
@@ -39,7 +54,8 @@
       riskBonus: 0,
       explorationBonus: 0,
       perfectBonus: 0,
-      mergeBonus: 0
+      mergeBonus: 0,
+      comboBonus: 0
     };
 
     this.weightBreakdown = {
@@ -50,6 +66,7 @@
       branchWeight: 0,
       mergeWeight: 0,
       hiddenWeight: 0,
+      comboWeight: 0,
       finalMultiplier: 1.0
     };
 
@@ -81,8 +98,21 @@
     var delta = Math.max(0, currentX - this.lastDistanceX);
     this.distance += delta;
 
+    if (this.comboCount > 0) {
+      this.damageFreeDistance += delta;
+      if (this.damageFreeDistance >= this.damageFreeSegmentThreshold) {
+        var segments = Math.floor(this.damageFreeDistance / this.damageFreeSegmentThreshold);
+        var extraSegments = segments - this.damageFreeSegments;
+        if (extraSegments > 0) {
+          this.damageFreeSegments = segments;
+          this.incrementCombo('damageFree', extraSegments * 80);
+        }
+      }
+    }
+
     var branchConfig = this.getBranchConfig(this.currentBranch);
     var multiplier = branchConfig ? branchConfig.rewardMultiplier : 1.0;
+    var comboMult = this.comboCount > 0 ? this.comboMultiplier : 1.0;
 
     if (!this.branchDistances[this.currentBranch]) {
       this.branchDistances[this.currentBranch] = 0;
@@ -90,7 +120,7 @@
     this.branchDistances[this.currentBranch] += delta;
 
     var baseScore = Math.floor(delta * 0.1);
-    var weightedScore = Math.floor(baseScore * multiplier);
+    var weightedScore = Math.floor(baseScore * multiplier * comboMult);
     this.score += weightedScore;
     this.lastDistanceX = currentX;
 
@@ -100,7 +130,8 @@
   proto.addBonusScore = function(points, type) {
     var branchConfig = this.getBranchConfig(this.currentBranch);
     var multiplier = branchConfig ? branchConfig.rewardMultiplier : 1.0;
-    var weightedPoints = Math.floor(points * multiplier);
+    var comboMult = this.comboCount > 0 ? this.comboMultiplier : 1.0;
+    var weightedPoints = Math.floor(points * multiplier * comboMult);
     this.score += weightedPoints;
 
     if (type && this.bonusScores.hasOwnProperty(type)) {
@@ -114,7 +145,8 @@
   proto.addCollectibleScore = function(value, type) {
     var branchConfig = this.getBranchConfig(this.currentBranch);
     var multiplier = branchConfig ? branchConfig.rewardMultiplier : 1.0;
-    var weighted = Math.floor(value * multiplier);
+    var comboMult = this.comboCount > 0 ? this.comboMultiplier : 1.0;
+    var weighted = Math.floor(value * multiplier * comboMult);
     this.score += weighted;
     this.bonusScores.collectibleBonus += weighted;
     this.collectibleValue += weighted;
@@ -125,6 +157,12 @@
     this.health = Math.max(0, this.health - amount);
     this.damageTaken += amount;
     this.perfectRun = false;
+    if (this.comboCount > 0) {
+      this.breakCombo('damage');
+    }
+    this.damageFreeDistance = 0;
+    this.damageFreeSegments = 0;
+    this.lastDamageX = this.distance;
     if (this.health <= 0) {
       this.isGameOver = true;
     }
@@ -183,9 +221,87 @@
         this.jumpCombo++;
         var stylePoints = Math.floor(this.airTime * 50);
         this.addBonusScore(stylePoints, 'styleBonus');
+        var airComboPoints = 0;
+        if (this.airTime > 1.0) {
+          airComboPoints = Math.floor((this.airTime - 1.0) * 80);
+          this.incrementCombo('airTime', airComboPoints);
+        } else if (this.airTime > 0.7) {
+          airComboPoints = Math.floor(this.airTime * 30);
+          this.incrementCombo('airTime', airComboPoints);
+        }
       }
       this.airTime = 0;
     }
+  };
+
+  proto.incrementCombo = function(reason, points) {
+    this.comboCount++;
+    this.comboTimer = this.comboTimeout;
+    this.comboMultiplier = 1.0 + (this.comboCount - 1) * 0.15;
+    if (this.comboMultiplier > 5.0) this.comboMultiplier = 5.0;
+    if (this.comboCount > this.maxCombo) {
+      this.maxCombo = this.comboCount;
+    }
+
+    var bonusPoints = Math.floor(points * this.comboMultiplier);
+    this.score += bonusPoints;
+    this.bonusScores.comboBonus += bonusPoints;
+    this.comboBonusTotal += bonusPoints;
+
+    this.comboHistory.push({
+      reason: reason,
+      comboCount: this.comboCount,
+      multiplier: this.comboMultiplier,
+      points: bonusPoints,
+      distance: Math.floor(this.distance),
+      time: Date.now() - this.startTime
+    });
+
+    if (reason === 'obstaclePass') {
+      this.totalObstaclePasses++;
+    }
+
+    return bonusPoints;
+  };
+
+  proto.breakCombo = function(reason) {
+    if (this.comboCount <= 0) return;
+    this.comboBreakReason = reason;
+    this.comboCount = 0;
+    this.comboMultiplier = 1.0;
+    this.comboTimer = 0;
+    this.obstaclePassCount = 0;
+  };
+
+  proto.updateCombo = function(delta) {
+    if (this.comboCount <= 0) return;
+    var dt = delta / 1000;
+    this.comboTimer -= dt;
+    if (this.comboTimer <= 0) {
+      this.breakCombo('timeout');
+    }
+  };
+
+  proto.registerObstaclePass = function() {
+    this.obstaclePassCount++;
+    var points = 30 + this.obstaclePassCount * 15;
+    this.incrementCombo('obstaclePass', points);
+  };
+
+  proto.getComboInfo = function() {
+    return {
+      comboCount: this.comboCount,
+      comboMultiplier: this.comboMultiplier,
+      maxCombo: this.maxCombo,
+      comboTimer: this.comboTimer,
+      obstaclePassCount: this.obstaclePassCount,
+      totalObstaclePasses: this.totalObstaclePasses,
+      damageFreeDistance: Math.floor(this.damageFreeDistance),
+      damageFreeSegments: this.damageFreeSegments,
+      comboBonusTotal: this.comboBonusTotal,
+      comboBreakReason: this.comboBreakReason,
+      comboHistory: this.comboHistory.slice(-10)
+    };
   };
 
   proto.checkLevelComplete = function(currentX) {
@@ -279,13 +395,15 @@
       this.weightBreakdown.branchWeight = (uniqueBranches.length - 1) * weightConfig.explorationWeightPerBranch;
       this.weightBreakdown.mergeWeight = this.mergeCount * weightConfig.mergeWeight;
       this.weightBreakdown.hiddenWeight = hiddenBranchesVisited * weightConfig.hiddenBranchBonus;
+      this.weightBreakdown.comboWeight = this.maxCombo * 0.03;
       this.weightBreakdown.finalMultiplier = 1.0 +
         this.weightBreakdown.riskWeight +
         this.weightBreakdown.explorationWeight +
         this.weightBreakdown.perfectWeight +
         this.weightBreakdown.branchWeight +
         this.weightBreakdown.mergeWeight +
-        this.weightBreakdown.hiddenWeight;
+        this.weightBreakdown.hiddenWeight +
+        this.weightBreakdown.comboWeight;
 
       this.weightBreakdown.avgRiskLevel = avgRiskLevel;
       this.weightBreakdown.maxRiskLevel = maxRiskLevel;
@@ -293,6 +411,18 @@
       this.weightBreakdown.totalBranches = totalBranches;
       this.weightBreakdown.hiddenBranches = hiddenBranchesVisited;
       this.weightBreakdown.mergeCount = this.mergeCount;
+      this.weightBreakdown.maxCombo = this.maxCombo;
+      this.weightBreakdown.totalObstaclePasses = this.totalObstaclePasses;
+      this.weightBreakdown.damageFreeSegments = this.damageFreeSegments;
+
+      var comboBonus = this.bonusScores.comboBonus;
+      var comboFinishBonus = 0;
+      if (this.maxCombo >= 10) {
+        comboFinishBonus = this.maxCombo * 50;
+      } else if (this.maxCombo >= 5) {
+        comboFinishBonus = this.maxCombo * 25;
+      }
+      this.bonusScores.comboBonus += comboFinishBonus;
 
       this.bonusScores.timeBonus = timeBonus;
       this.bonusScores.healthBonus = healthBonus;
@@ -305,7 +435,7 @@
       this.bonusScores.mergeBonus = mergeBonus;
 
       var totalBonus = timeBonus + healthBonus + branchBonus + hiddenBonus +
-        styleBonus + riskBonus + explorationBonus + perfectBonus + mergeBonus;
+        styleBonus + riskBonus + explorationBonus + perfectBonus + mergeBonus + comboBonus + comboFinishBonus;
       var weightedBonus = Math.floor(totalBonus * this.weightBreakdown.finalMultiplier);
       this.score += weightedBonus;
 
@@ -375,7 +505,8 @@
       branchScoreBreakdown: this.branchScoreBreakdown,
       mergeCount: this.mergeCount,
       hiddenBranchesFound: this.hiddenBranchesFound,
-      totalWeightedMultiplier: this.totalWeightedMultiplier
+      totalWeightedMultiplier: this.totalWeightedMultiplier,
+      comboInfo: this.getComboInfo()
     };
   };
 
