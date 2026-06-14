@@ -50,6 +50,7 @@
     this.rolloverDamageApplied = false;
     this.rolloverCorrectionTextShown = false;
     this.rolloverWarningShown = false;
+    this.rolloverCooldownHintShown = false;
 
     this.branchSelectOpen = false;
     this.lastBranchPoint = -1;
@@ -2096,7 +2097,9 @@
     this.damageCooldown = Math.max(0, this.damageCooldown - delta);
     this.rampCooldown = Math.max(0, this.rampCooldown - delta);
 
+    this.scoreManager.updateRolloverCooldown(delta);
     this.checkRollover(carX, delta);
+    this.updateRolloverCooldownHUD(delta);
 
     this.checkSpecialEvents(carX, delta);
 
@@ -3176,30 +3179,39 @@
     if (this.gameOver) return;
 
     var rolloverState = this.carPhysics.getRolloverState();
+    var scoreCooldown = this.scoreManager.getRolloverCooldownRemaining();
+    var bothOnCooldown = rolloverState.onCooldown && scoreCooldown > 0;
 
-    if (rolloverState.damagePending && !this.rolloverDamageApplied) {
-      var result = this.scoreManager.takeRolloverDamage(delta);
-      if (result.applied) {
-        this.rolloverDamageApplied = true;
-        this.carPhysics.applyDamage();
-        this.screenShake(8, 300);
-        this.showFloatingText(carX, this.carPhysics.car.y - 100,
-          '🔄 翻车! -' + result.damage + ' HP', 0xf44336);
+    if (rolloverState.damagePending) {
+      if (scoreCooldown <= 0) {
+        var result = this.scoreManager.takeRolloverDamage();
+        if (result.applied) {
+          this.rolloverDamageApplied = true;
+          this.carPhysics.consumeRolloverDamage();
+          this.carPhysics.applyDamage();
+          this.screenShake(8, 300);
+          this.showFloatingText(carX, this.carPhysics.car.y - 100,
+            '🔄 翻车! -' + result.damage + ' HP', 0xf44336);
 
-        if (this.scoreManager.comboBreakReason === 'damage') {
-          this.showFloatingText(carX, this.carPhysics.car.y - 140, '💥 连击中断!', 0xf44336);
+          if (this.scoreManager.comboBreakReason === 'damage') {
+            this.showFloatingText(carX, this.carPhysics.car.y - 140, '💥 连击中断!', 0xf44336);
+          }
+
+          if (result.dead) {
+            this.gameOver = true;
+            this.scoreManager.saveHighScore();
+            this.showGameOver(false, '翻车损毁');
+            return;
+          }
         }
-
-        if (result.dead) {
-          this.gameOver = true;
-          this.scoreManager.saveHighScore();
-          this.showGameOver(false, '翻车损毁');
-          return;
-        }
+      } else if (!this.rolloverCooldownHintShown) {
+        this.showFloatingText(carX, this.carPhysics.car.y - 120,
+          '⏳ 翻车保护冷却中 (' + scoreCooldown.toFixed(1) + 's)', 0xffc107);
+        this.rolloverCooldownHintShown = true;
       }
     }
 
-    if (rolloverState.isRollover && !rolloverState.isCorrecting) {
+    if (rolloverState.isRollover && !rolloverState.isCorrecting && !bothOnCooldown) {
       if (!this.rolloverWarningShown) {
         this.showRolloverWarning();
         this.rolloverWarningShown = true;
@@ -3220,8 +3232,61 @@
       this.rolloverCorrectionTextShown = false;
     }
 
-    if (!rolloverState.isRollover && !rolloverState.isCorrecting && !rolloverState.damagePending) {
+    if (!rolloverState.damagePending && !rolloverState.isRollover && !rolloverState.isCorrecting) {
       this.rolloverDamageApplied = false;
+      this.rolloverCooldownHintShown = false;
+    }
+  };
+
+  proto.updateRolloverCooldownHUD = function(delta) {
+    if (this.gameOver) return;
+    var rolloverState = this.carPhysics.getRolloverState();
+    var scoreCooldown = this.scoreManager.getRolloverCooldownRemaining();
+    var cooldownRemaining = Math.max(rolloverState.cooldownRemaining, scoreCooldown);
+    var showCooldown = cooldownRemaining > 0 && !rolloverState.isRollover && !rolloverState.isCorrecting;
+
+    if (showCooldown) {
+      if (!this.rolloverCooldownHUD) {
+        var width = this.scale.width;
+        this.rolloverCooldownHUD = this.add.graphics();
+        this.rolloverCooldownHUD.setScrollFactor(0);
+        this.rolloverCooldownHUD.setDepth(799);
+        this.rolloverCooldownHUDText = this.add.text(width / 2, 122, '', {
+          fontSize: '14px',
+          fontWeight: 'bold',
+          color: '#ffc107'
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(800);
+      }
+
+      var w = this.scale.width;
+      var barW = 180;
+      var barH = 8;
+      var barX = w / 2 - barW / 2;
+      var barY = 100;
+      var progress = 1 - cooldownRemaining /
+        Math.max(this.carPhysics.rolloverCooldownDuration, this.scoreManager.rolloverDamageCooldownDuration);
+
+      this.rolloverCooldownHUD.clear();
+      this.rolloverCooldownHUD.fillStyle(0x000000, 0.6);
+      this.rolloverCooldownHUD.fillRoundedRect(barX - 4, barY - 4, barW + 8, barH + 28, 6);
+      this.rolloverCooldownHUD.fillStyle(0x333333, 1);
+      this.rolloverCooldownHUD.fillRoundedRect(barX, barY, barW, barH, 4);
+      this.rolloverCooldownHUD.fillStyle(0xffc107, 1);
+      this.rolloverCooldownHUD.fillRoundedRect(barX, barY, barW * Math.max(0, Math.min(1, progress)), barH, 4);
+
+      this.rolloverCooldownHUDText.setText(
+        '🛡️ 翻车保护冷却中 ' + cooldownRemaining.toFixed(1) + 's'
+      );
+      this.rolloverCooldownHUDText.setAlpha(1);
+      if (this.rolloverCooldownHUD) this.rolloverCooldownHUD.setAlpha(1);
+    } else {
+      if (this.rolloverCooldownHUD) {
+        this.rolloverCooldownHUD.clear();
+        this.rolloverCooldownHUD.setAlpha(0);
+      }
+      if (this.rolloverCooldownHUDText) {
+        this.rolloverCooldownHUDText.setAlpha(0);
+      }
     }
   };
 
@@ -3362,6 +3427,14 @@
     }
     this.hideDangerWarning();
     this.hideRolloverWarning();
+    if (this.rolloverCooldownHUD) {
+      this.rolloverCooldownHUD.destroy();
+      this.rolloverCooldownHUD = null;
+    }
+    if (this.rolloverCooldownHUDText) {
+      this.rolloverCooldownHUDText.destroy();
+      this.rolloverCooldownHUDText = null;
+    }
     this.closeBranchSelect();
   };
 

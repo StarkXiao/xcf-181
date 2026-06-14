@@ -45,6 +45,7 @@
     this.rolloverCorrectionTimer = 0;
     this.rolloverCooldown = 0;
     this.rolloverDamagePending = false;
+    this.rolloverDamageTriggered = false;
     this.rolloverAngleThreshold = Math.PI * 0.55;
     this.rolloverGracePeriod = 0.6;
     this.rolloverCorrectionDuration = 0.4;
@@ -276,12 +277,17 @@
       if (this.rolloverCorrectionTimer <= 0) {
         this.isRollover = false;
         this.rolloverCooldown = this.rolloverCooldownDuration;
-        this.rolloverDamagePending = false;
       }
       return;
     }
 
-    if (this.rolloverCooldown > 0) return;
+    if (this.rolloverCooldown > 0) {
+      if (this.rolloverDamageTriggered) {
+        this.rolloverDamageTriggered = false;
+        this.rolloverDamagePending = false;
+      }
+      return;
+    }
 
     if (this.isGrounded) {
       var absAngle = Math.abs(Phaser.Math.Angle.Wrap(this.angle));
@@ -289,7 +295,10 @@
         if (!this.isRollover) {
           this.isRollover = true;
           this.rolloverTimer = 0;
-          this.rolloverDamagePending = true;
+          if (!this.rolloverDamageTriggered) {
+            this.rolloverDamagePending = true;
+            this.rolloverDamageTriggered = true;
+          }
           this.rolloverCount++;
         }
 
@@ -303,6 +312,8 @@
         if (this.isRollover) {
           this.isRollover = false;
           this.rolloverTimer = 0;
+        }
+        if (!this.rolloverDamageTriggered) {
           this.rolloverDamagePending = false;
         }
       }
@@ -310,9 +321,15 @@
       if (this.isRollover) {
         this.isRollover = false;
         this.rolloverTimer = 0;
+      }
+      if (!this.rolloverDamageTriggered) {
         this.rolloverDamagePending = false;
       }
     }
+  };
+
+  proto.consumeRolloverDamage = function() {
+    this.rolloverDamagePending = false;
   };
 
   proto.getRolloverState = function() {

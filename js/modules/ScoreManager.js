@@ -342,10 +342,9 @@
     return this.health <= 0;
   };
 
-  proto.takeRolloverDamage = function(delta) {
-    this.rolloverDamageCooldown = Math.max(0, this.rolloverDamageCooldown - delta / 1000);
+  proto.takeRolloverDamage = function() {
     if (this.rolloverDamageCooldown > 0) {
-      return { applied: false, reason: 'cooldown', dead: false };
+      return { applied: false, reason: 'cooldown', dead: false, cooldownRemaining: this.rolloverDamageCooldown };
     }
 
     var dead = this.takeDamage(this.rolloverDamageAmount);
@@ -353,6 +352,14 @@
     this.rolloverDamageCooldown = this.rolloverDamageCooldownDuration;
     this.lastRolloverDamageTime = Date.now() - this.startTime;
     return { applied: true, damage: this.rolloverDamageAmount, dead: dead, rolloverCount: this.rolloverCount };
+  };
+
+  proto.updateRolloverCooldown = function(delta) {
+    this.rolloverDamageCooldown = Math.max(0, this.rolloverDamageCooldown - delta / 1000);
+  };
+
+  proto.getRolloverCooldownRemaining = function() {
+    return this.rolloverDamageCooldown;
   };
 
   proto.getHealthPercent = function() {
