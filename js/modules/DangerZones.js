@@ -52,26 +52,26 @@
     gfx.fillRect(-width / 2, -8, width, 12);
 
     gfx.lineStyle(2, zoneColor, 0.8);
-    gfx.setLineDash([8, 6]);
     gfx.strokeRect(-width / 2, -8, width, 12);
-    gfx.setLineDash([]);
+
+    this.zoneIndicators.push(gfx);
 
     var icon = this.getZoneIcon(zone.type);
-    var iconText = this.scene.add.text(0, -25, icon, {
+    var iconText = this.scene.add.text(centerX, terrainY - 27, icon, {
       fontSize: '20px'
     }).setOrigin(0.5);
-    gfx.add(iconText);
+    iconText.setDepth(4);
+    this.zoneIndicators.push(iconText);
 
-    var label = this.scene.add.text(0, -45, this.getZoneLabel(zone.type), {
+    var label = this.scene.add.text(centerX, terrainY - 47, this.getZoneLabel(zone.type), {
       fontSize: '11px',
       fontWeight: 'bold',
       color: '#' + zoneColor.toString(16).padStart(6, '0'),
       stroke: '#000000',
       strokeThickness: 2
     }).setOrigin(0.5);
-    gfx.add(label);
-
-    this.zoneIndicators.push(gfx);
+    label.setDepth(4);
+    this.zoneIndicators.push(label);
   };
 
   proto.getZoneColor = function(type) {
@@ -114,6 +114,20 @@
   proto.setCurrentBranch = function(branchId) {
     this.currentBranch = branchId;
     this.activeEffects = {};
+  };
+
+  proto.unlockBranch = function(branchId) {
+    this.renderZones();
+  };
+
+  proto.regenerateForBranch = function(branchId) {
+    this.currentBranch = branchId;
+    this.activeEffects = {};
+    this.renderZones();
+  };
+
+  proto.checkCollisions = function(carBounds, carPhysics) {
+    return { damage: 0, slowdown: 1, message: null };
   };
 
   proto.update = function(carX, carPhysics, delta, now) {

@@ -159,11 +159,13 @@
 
   proto.getBranchConfig = function(branchId) {
     var config = MountainRacer.LEVEL_CONFIGS[this.level];
-    if (!config || !config.branches) return null;
+    if (!config || !config.branches) {
+      return { rewardMultiplier: 1.0, riskLevel: 1 };
+    }
     for (var i = 0; i < config.branches.length; i++) {
       if (config.branches[i].id === branchId) return config.branches[i];
     }
-    return null;
+    return { rewardMultiplier: 1.0, riskLevel: 1 };
   };
 
   proto.updateStats = function(carPhysics) {
@@ -191,6 +193,18 @@
     if (currentX >= this.levelLength - 200) {
       this.isComplete = true;
 
+      var config = MountainRacer.LEVEL_CONFIGS[this.level];
+      if (!config) return false;
+      var weightConfig = config.weightConfig || {
+        baseMultiplier: 1.0,
+        riskWeightPerLevel: 0.15,
+        explorationWeightPerBranch: 0.08,
+        perfectRunWeight: 0.25,
+        lowDamageWeight: 0.1,
+        mergeWeight: 0.05,
+        hiddenBranchBonus: 0.2
+      };
+
       var elapsed = this.getElapsedTime();
       var timeBonus = Math.floor(Math.max(0, 300 - elapsed) * 10);
 
@@ -199,14 +213,15 @@
       var branchBonus = 0;
       var hiddenBonus = 0;
       var uniqueBranches = Object.keys(this.branchDistances);
-      var totalBranches = (MountainRacer.LEVEL_CONFIGS[this.level] && MountainRacer.LEVEL_CONFIGS[this.level].branches) ?
-        MountainRacer.LEVEL_CONFIGS[this.level].branches.length : 1;
+      var totalBranches = config.branches ? config.branches.length : 1;
+      var hiddenBranchesVisited = 0;
 
       for (var i = 0; i < uniqueBranches.length; i++) {
         var branchId = uniqueBranches[i];
         var branchCfg = this.getBranchConfig(branchId);
         if (branchCfg && branchCfg.hidden) {
           hiddenBonus += 500;
+          hiddenBranchesVisited++;
         }
       }
       branchBonus += (uniqueBranches.length - 1) * 200;
@@ -219,6 +234,8 @@
       var avgRiskLevel = 1;
       var totalBranchDist = 0;
       var weightedRisk = 0;
+      var maxRiskLevel = 1;
+
       for (var bi = 0; bi < uniqueBranches.length; bi++) {
         var bid = uniqueBranches[bi];
         var bCfg = this.getBranchConfig(bid);
@@ -226,6 +243,7 @@
         if (bCfg) {
           weightedRisk += (bCfg.riskLevel || 1) * bDist;
           totalBranchDist += bDist;
+          maxRiskLevel = Math.max(maxRiskLevel, bCfg.riskLevel || 1);
         }
       }
       if (totalBranchDist > 0) {
@@ -248,16 +266,33 @@
         mergeBonus = this.branchHistory.length * 150;
       }
 
-      this.weightBreakdown.baseMultiplier = 1.0;
-      this.weightBreakdown.riskWeight = (avgRiskLevel - 1) * 0.15;
-      this.weightBreakdown.explorationWeight = explorationRatio * 0.2;
-      this.weightBreakdown.perfectWeight = this.perfectRun ? 0.25 : (this.damageTaken < 30 ? 0.1 : 0);
-      this.weightBreakdown.branchWeight = (uniqueBranches.length - 1) * 0.08;
+      var hiddenBonusExtra = hiddenBranchesVisited * 200;
+      if (hiddenBranchesVisited > 0) {
+        explorationBonus += hiddenBonusExtra;
+      }
+
+      this.weightBreakdown.baseMultiplier = weightConfig.baseMultiplier;
+      this.weightBreakdown.riskWeight = (avgRiskLevel - 1) * weightConfig.riskWeightPerLevel;
+      this.weightBreakdown.explorationWeight = explorationRatio * weightConfig.explorationWeightPerBranch * uniqueBranches.length;
+      this.weightBreakdown.perfectWeight = this.perfectRun ? weightConfig.perfectRunWeight :
+        (this.damageTaken < 30 ? weightConfig.lowDamageWeight : 0);
+      this.weightBreakdown.branchWeight = (uniqueBranches.length - 1) * weightConfig.explorationWeightPerBranch;
+      this.weightBreakdown.mergeWeight = this.mergeCount * weightConfig.mergeWeight;
+      this.weightBreakdown.hiddenWeight = hiddenBranchesVisited * weightConfig.hiddenBranchBonus;
       this.weightBreakdown.finalMultiplier = 1.0 +
         this.weightBreakdown.riskWeight +
         this.weightBreakdown.explorationWeight +
         this.weightBreakdown.perfectWeight +
-        this.weightBreakdown.branchWeight;
+        this.weightBreakdown.branchWeight +
+        this.weightBreakdown.mergeWeight +
+        this.weightBreakdown.hiddenWeight;
+
+      this.weightBreakdown.avgRiskLevel = avgRiskLevel;
+      this.weightBreakdown.maxRiskLevel = maxRiskLevel;
+      this.weightBreakdown.uniqueBranches = uniqueBranches.length;
+      this.weightBreakdown.totalBranches = totalBranches;
+      this.weightBreakdown.hiddenBranches = hiddenBranchesVisited;
+      this.weightBreakdown.mergeCount = this.mergeCount;
 
       this.bonusScores.timeBonus = timeBonus;
       this.bonusScores.healthBonus = healthBonus;
@@ -271,7 +306,10 @@
 
       var totalBonus = timeBonus + healthBonus + branchBonus + hiddenBonus +
         styleBonus + riskBonus + explorationBonus + perfectBonus + mergeBonus;
-      this.score += Math.floor(totalBonus * this.weightBreakdown.finalMultiplier);
+      var weightedBonus = Math.floor(totalBonus * this.weightBreakdown.finalMultiplier);
+      this.score += weightedBonus;
+
+      this.calculateBranchScoreBreakdown();
 
       this.saveHighScore();
       this.saveBranchProgress();
@@ -279,6 +317,40 @@
       return true;
     }
     return false;
+  };
+
+  proto.calculateBranchScoreBreakdown = function() {
+    var uniqueBranches = Object.keys(this.branchDistances);
+
+    for (var i = 0; i < uniqueBranches.length; i++) {
+      var branchId = uniqueBranches[i];
+      var branchCfg = this.getBranchConfig(branchId);
+      var distance = this.branchDistances[branchId] || 0;
+      var baseScore = Math.floor(distance * 0.1);
+      var multiplier = branchCfg ? branchCfg.rewardMultiplier : 1.0;
+      var weightedScore = Math.floor(baseScore * multiplier);
+
+      var riskContribution = 0;
+      var explorationContribution = 0;
+
+      if (branchCfg) {
+        riskContribution = Math.floor(baseScore * ((branchCfg.riskLevel - 1) * 0.1));
+        if (branchCfg.hidden) {
+          explorationContribution = Math.floor(baseScore * 0.2);
+        }
+      }
+
+      this.branchScoreBreakdown[branchId] = {
+        distance: Math.floor(distance),
+        baseScore: baseScore,
+        multiplier: multiplier,
+        weightedScore: weightedScore,
+        riskContribution: riskContribution,
+        explorationContribution: explorationContribution,
+        total: weightedScore + riskContribution + explorationContribution,
+        config: branchCfg
+      };
+    }
   };
 
   proto.getScore = function() {
@@ -299,7 +371,11 @@
       perfectRun: this.perfectRun,
       damageTaken: this.damageTaken,
       collectibleValue: this.collectibleValue,
-      weightBreakdown: this.weightBreakdown
+      weightBreakdown: this.weightBreakdown,
+      branchScoreBreakdown: this.branchScoreBreakdown,
+      mergeCount: this.mergeCount,
+      hiddenBranchesFound: this.hiddenBranchesFound,
+      totalWeightedMultiplier: this.totalWeightedMultiplier
     };
   };
 

@@ -925,22 +925,23 @@
       signGfx.lineStyle(3, 0xff9800, 1);
       signGfx.strokeRoundedRect(-60, -30, 120, 50, 8);
 
-      var text = this.scene.add.text(0, -10, '🔀 分岔路口', {
+      this.indicatorGraphics.push(signGfx);
+
+      var text = this.scene.add.text(bp.x, y - 90, '🔀 分岔路口', {
         fontSize: '14px',
         fontWeight: 'bold',
         color: '#333333'
       }).setOrigin(0.5);
-      text.setScrollFactor(1);
+      text.setDepth(16);
 
-      var subText = this.scene.add.text(0, 8, '选择路线', {
+      var subText = this.scene.add.text(bp.x, y - 72, '选择路线', {
         fontSize: '11px',
         color: '#666666'
       }).setOrigin(0.5);
+      subText.setDepth(16);
 
-      signGfx.add(text);
-      signGfx.add(subText);
-
-      this.indicatorGraphics.push(signGfx);
+      this.indicatorGraphics.push(text);
+      this.indicatorGraphics.push(subText);
 
       var arrowGfx = this.scene.add.graphics();
       arrowGfx.setDepth(16);
