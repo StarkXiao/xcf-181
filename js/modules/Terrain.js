@@ -4,12 +4,18 @@
   MountainRacer.LEVEL_CONFIGS = {
     1: {
       name: '初级赛道',
+      sceneType: 'exploration',
       length: 5000,
       baseHeight: 450,
       amplitude: 60,
       roughness: 0.006,
       obstacleDensity: 0.015,
       bgLayers: 3,
+      achievements: [
+        { id: 'explorer_lv1', name: '初级探险家', description: '探索所有可见分支', condition: { type: 'uniqueBranches', value: 2 } },
+        { id: 'speed_demon_lv1', name: '速度恶魔', description: '在秘径中达到高速', condition: { type: 'branchSpeed', branch: 'shortcut', value: 450 } },
+        { id: 'pathfinder_lv1', name: '开路先锋', description: '发现隐藏路线', condition: { type: 'unlockHidden', value: 1 } }
+      ],
       branches: [
         {
           id: 'main',
@@ -22,12 +28,20 @@
           color: 0x4caf50,
           hidden: false,
           description: '平坦安全的主路',
+          difficulty: '简单',
+          estimatedTime: '~60秒',
+          pros: ['安全稳定', '障碍稀少', '适合新手'],
+          cons: ['奖励一般', '缺乏挑战'],
           dangerZones: [],
           rewardZones: [
             { startX: 1800, endX: 2000, type: 'coin', density: 0.05 },
             { startX: 4000, endX: 4200, type: 'coin', density: 0.05 }
           ],
-          mergeSmoothness: 1.0
+          specialEvents: [
+            { x: 2500, type: 'speedBoost', name: '加速带', multiplier: 1.3, duration: 3 }
+          ],
+          mergeSmoothness: 1.0,
+          weightContribution: { risk: 0, exploration: 0.1, perfect: 0.25 }
         },
         {
           id: 'risky',
@@ -41,14 +55,22 @@
           color: 0xff9800,
           hidden: false,
           description: '崎岖但更短，奖励更高',
+          difficulty: '中等',
+          estimatedTime: '~55秒',
+          pros: ['距离更短', '奖励更高', '跳跃更多'],
+          cons: ['地形崎岖', '落石危险', '路面湿滑'],
           dangerZones: [
-            { startX: 1600, endX: 1800, type: 'rockfall', damage: 15 },
-            { startX: 2200, endX: 2400, type: 'slippery', slowdown: 0.3 }
+            { startX: 1600, endX: 1800, type: 'rockfall', damage: 15, warningX: 1500 },
+            { startX: 2200, endX: 2400, type: 'slippery', slowdown: 0.3, warningX: 2100 }
           ],
           rewardZones: [
             { startX: 2000, endX: 2200, type: 'gem', density: 0.03 }
           ],
-          mergeSmoothness: 0.8
+          specialEvents: [
+            { x: 1900, type: 'riskBonus', name: '险道奖励', points: 100, condition: { type: 'noDamage', range: 500 } }
+          ],
+          mergeSmoothness: 0.8,
+          weightContribution: { risk: 0.15, exploration: 0.15, perfect: 0.2 }
         },
         {
           id: 'shortcut',
@@ -62,34 +84,58 @@
           color: 0x9c27b0,
           hidden: true,
           unlockCondition: { type: 'speed', value: 400 },
+          unlockHint: '🚀 达到 400+ 速度解锁',
           description: '隐藏捷径，超高奖励',
+          difficulty: '困难',
+          estimatedTime: '~45秒',
+          pros: ['距离最短', '奖励最高', '宝石密集'],
+          cons: ['极其崎岖', '悬崖危险', '落石频繁'],
           dangerZones: [
-            { startX: 3600, endX: 3800, type: 'rockfall', damage: 25 },
-            { startX: 4100, endX: 4300, type: 'cliff', fallChance: 0.3 }
+            { startX: 3600, endX: 3800, type: 'rockfall', damage: 25, warningX: 3500 },
+            { startX: 4100, endX: 4300, type: 'cliff', fallChance: 0.3, warningX: 4000 }
           ],
           rewardZones: [
             { startX: 3800, endX: 4000, type: 'gem', density: 0.06 },
             { startX: 4300, endX: 4500, type: 'coin', density: 0.08 }
           ],
-          mergeSmoothness: 0.6
+          specialEvents: [
+            { x: 3900, type: 'secretBonus', name: '秘境宝藏', points: 500, oneTime: true }
+          ],
+          mergeSmoothness: 0.6,
+          weightContribution: { risk: 0.3, exploration: 0.25, perfect: 0.15 }
         }
       ],
       branchPoints: [
-        { x: 1200, type: 'split', branches: ['main', 'risky'], mergeBackX: 2800 },
-        { x: 2800, type: 'merge', from: ['main', 'risky'] },
-        { x: 3500, type: 'split', branches: ['main', 'shortcut'], hidden: true, mergeBackX: 4700 }
+        { x: 1200, type: 'split', branches: ['main', 'risky'], mergeBackX: 2800, hint: '选择你的路线' },
+        { x: 2800, type: 'merge', from: ['main', 'risky'], bonus: 200 },
+        { x: 3500, type: 'split', branches: ['main', 'shortcut'], hidden: true, mergeBackX: 4700, hint: '✨ 发现隐藏路线!' }
       ],
       mergePoint: 4700,
-      finalMergeSmoothRange: 300
+      finalMergeSmoothRange: 300,
+      weightConfig: {
+        baseMultiplier: 1.0,
+        riskWeightPerLevel: 0.15,
+        explorationWeightPerBranch: 0.08,
+        perfectRunWeight: 0.25,
+        lowDamageWeight: 0.1,
+        mergeWeight: 0.05,
+        hiddenBranchBonus: 0.2
+      }
     },
     2: {
       name: '中级赛道',
+      sceneType: 'all',
       length: 8000,
       baseHeight: 430,
       amplitude: 90,
       roughness: 0.008,
       obstacleDensity: 0.025,
       bgLayers: 4,
+      achievements: [
+        { id: 'explorer_lv2', name: '山地探险家', description: '探索所有3条可见分支', condition: { type: 'uniqueBranches', value: 3 } },
+        { id: 'air_master_lv2', name: '空中大师', description: '累计飞行超过3秒', condition: { type: 'totalAirTime', value: 3 } },
+        { id: 'pathfinder_lv2', name: '秘境探索者', description: '发现中级赛道隐藏路线', condition: { type: 'unlockHidden', value: 1 } }
+      ],
       branches: [
         {
           id: 'main',
@@ -101,7 +147,18 @@
           lengthMultiplier: 1.0,
           color: 0x4caf50,
           hidden: false,
-          description: '标准主路'
+          description: '标准主路',
+          difficulty: '简单',
+          estimatedTime: '~90秒',
+          pros: ['路线熟悉', '障碍适中'],
+          cons: ['奖励一般'],
+          dangerZones: [],
+          rewardZones: [
+            { startX: 2000, endX: 2200, type: 'coin', density: 0.04 }
+          ],
+          specialEvents: [],
+          mergeSmoothness: 1.0,
+          weightContribution: { risk: 0, exploration: 0.1, perfect: 0.25 }
         },
         {
           id: 'risky',
@@ -114,7 +171,23 @@
           amplitudeBonus: 40,
           color: 0xff9800,
           hidden: false,
-          description: '高风险高回报'
+          description: '高风险高回报',
+          difficulty: '中等',
+          estimatedTime: '~80秒',
+          pros: ['速度快', '奖励高'],
+          cons: ['障碍多', '易损坏'],
+          dangerZones: [
+            { startX: 2500, endX: 2800, type: 'rockfall', damage: 18, warningX: 2400 },
+            { startX: 3200, endX: 3500, type: 'slippery', slowdown: 0.25, warningX: 3100 }
+          ],
+          rewardZones: [
+            { startX: 2800, endX: 3000, type: 'gem', density: 0.04 }
+          ],
+          specialEvents: [
+            { x: 3000, type: 'riskBonus', name: '勇者奖励', points: 150, condition: { type: 'noDamage', range: 600 } }
+          ],
+          mergeSmoothness: 0.8,
+          weightContribution: { risk: 0.15, exploration: 0.15, perfect: 0.2 }
         },
         {
           id: 'mountain',
@@ -127,7 +200,23 @@
           amplitudeBonus: 80,
           color: 0x795548,
           hidden: false,
-          description: '翻山越岭，距离长但障碍少'
+          description: '翻山越岭，距离长但障碍少',
+          difficulty: '困难',
+          estimatedTime: '~100秒',
+          pros: ['障碍稀少', '视野开阔', '跳跃极多'],
+          cons: ['距离最长', '大起大落', '需要技巧'],
+          dangerZones: [
+            { startX: 3000, endX: 3300, type: 'cliff', fallChance: 0.2, warningX: 2900 }
+          ],
+          rewardZones: [
+            { startX: 4500, endX: 4800, type: 'gem', density: 0.05 },
+            { startX: 5200, endX: 5500, type: 'coin', density: 0.06 }
+          ],
+          specialEvents: [
+            { x: 4000, type: 'jumpChallenge', name: '飞跃挑战', points: 200, condition: { type: 'airTime', value: 1.0 } }
+          ],
+          mergeSmoothness: 0.7,
+          weightContribution: { risk: 0.2, exploration: 0.2, perfect: 0.15 }
         },
         {
           id: 'shortcut',
@@ -141,25 +230,60 @@
           color: 0x9c27b0,
           hidden: true,
           unlockCondition: { type: 'airtime', value: 1.5 },
-          description: '终极捷径，需要飞行技术'
+          unlockHint: '🦘 单次飞行 1.5秒+ 解锁',
+          description: '终极捷径，需要飞行技术',
+          difficulty: '极难',
+          estimatedTime: '~65秒',
+          pros: ['距离最短', '奖励最高'],
+          cons: ['极其危险', '需要技术'],
+          dangerZones: [
+            { startX: 5200, endX: 5500, type: 'rockfall', damage: 30, warningX: 5100 },
+            { startX: 5800, endX: 6100, type: 'cliff', fallChance: 0.35, warningX: 5700 }
+          ],
+          rewardZones: [
+            { startX: 5500, endX: 5700, type: 'gem', density: 0.07 },
+            { startX: 6100, endX: 6400, type: 'gem', density: 0.05 }
+          ],
+          specialEvents: [
+            { x: 5600, type: 'secretBonus', name: '空中宝藏', points: 600, oneTime: true }
+          ],
+          mergeSmoothness: 0.5,
+          weightContribution: { risk: 0.35, exploration: 0.25, perfect: 0.1 }
         }
       ],
       branchPoints: [
-        { x: 1500, type: 'split', branches: ['main', 'risky', 'mountain'] },
-        { x: 4000, type: 'merge', from: ['main', 'risky'] },
-        { x: 5000, type: 'split', branches: ['main', 'shortcut'], hidden: true },
-        { x: 6000, type: 'merge', from: ['mountain', 'main'] }
+        { x: 1500, type: 'split', branches: ['main', 'risky', 'mountain'], hint: '三条路线任你选择' },
+        { x: 4000, type: 'merge', from: ['main', 'risky'], bonus: 250 },
+        { x: 5000, type: 'split', branches: ['main', 'shortcut'], hidden: true, hint: '✨ 秘径已开启!' },
+        { x: 6000, type: 'merge', from: ['mountain', 'main'], bonus: 300 }
       ],
-      mergePoint: 7600
+      mergePoint: 7600,
+      finalMergeSmoothRange: 350,
+      weightConfig: {
+        baseMultiplier: 1.0,
+        riskWeightPerLevel: 0.15,
+        explorationWeightPerBranch: 0.08,
+        perfectRunWeight: 0.25,
+        lowDamageWeight: 0.1,
+        mergeWeight: 0.05,
+        hiddenBranchBonus: 0.2
+      }
     },
     3: {
       name: '高级赛道',
+      sceneType: 'racing',
       length: 12000,
       baseHeight: 400,
       amplitude: 120,
       roughness: 0.01,
       obstacleDensity: 0.035,
       bgLayers: 5,
+      achievements: [
+        { id: 'explorer_lv3', name: '极限探险家', description: '探索所有可见分支', condition: { type: 'uniqueBranches', value: 3 } },
+        { id: 'combo_master', name: '连击大师', description: '达成5次跳跃连击', condition: { type: 'jumpCombo', value: 5 } },
+        { id: 'pathfinder_lv3', name: '传说开路者', description: '发现所有隐藏路线', condition: { type: 'unlockHidden', value: 2 } },
+        { id: 'perfect_runner', name: '完美车手', description: '无伤通关高级赛道', condition: { type: 'perfectRun', value: true } }
+      ],
       branches: [
         {
           id: 'main',
@@ -171,7 +295,20 @@
           lengthMultiplier: 1.0,
           color: 0x4caf50,
           hidden: false,
-          description: '标准主路'
+          description: '标准主路',
+          difficulty: '中等',
+          estimatedTime: '~130秒',
+          pros: ['路线熟悉'],
+          cons: ['障碍较多'],
+          dangerZones: [
+            { startX: 3000, endX: 3200, type: 'rockfall', damage: 20, warningX: 2900 }
+          ],
+          rewardZones: [
+            { startX: 2500, endX: 2700, type: 'coin', density: 0.04 }
+          ],
+          specialEvents: [],
+          mergeSmoothness: 1.0,
+          weightContribution: { risk: 0.1, exploration: 0.1, perfect: 0.25 }
         },
         {
           id: 'risky',
@@ -184,7 +321,23 @@
           amplitudeBonus: 50,
           color: 0xff9800,
           hidden: false,
-          description: '危险但快速'
+          description: '危险但快速',
+          difficulty: '困难',
+          estimatedTime: '~110秒',
+          pros: ['速度快', '奖励较高'],
+          cons: ['障碍密集', '危险区域多'],
+          dangerZones: [
+            { startX: 2800, endX: 3100, type: 'rockfall', damage: 22, warningX: 2700 },
+            { startX: 3800, endX: 4100, type: 'slippery', slowdown: 0.2, warningX: 3700 }
+          ],
+          rewardZones: [
+            { startX: 3200, endX: 3500, type: 'gem', density: 0.04 }
+          ],
+          specialEvents: [
+            { x: 3500, type: 'riskBonus', name: '极限挑战', points: 200, condition: { type: 'noDamage', range: 800 } }
+          ],
+          mergeSmoothness: 0.75,
+          weightContribution: { risk: 0.2, exploration: 0.15, perfect: 0.2 }
         },
         {
           id: 'canyon',
@@ -197,7 +350,25 @@
           amplitudeBonus: 100,
           color: 0x795548,
           hidden: false,
-          description: '峡谷穿行，大起大落'
+          description: '峡谷穿行，大起大落',
+          difficulty: '极难',
+          estimatedTime: '~120秒',
+          pros: ['地形刺激', '奖励丰厚'],
+          cons: ['起伏剧烈', '极易坠落'],
+          dangerZones: [
+            { startX: 3500, endX: 3800, type: 'cliff', fallChance: 0.25, warningX: 3400 },
+            { startX: 6000, endX: 6300, type: 'rockfall', damage: 28, warningX: 5900 },
+            { startX: 7000, endX: 7300, type: 'cliff', fallChance: 0.3, warningX: 6900 }
+          ],
+          rewardZones: [
+            { startX: 4000, endX: 4300, type: 'gem', density: 0.05 },
+            { startX: 6500, endX: 6800, type: 'gem', density: 0.06 }
+          ],
+          specialEvents: [
+            { x: 5000, type: 'jumpChallenge', name: '峡谷飞跃', points: 300, condition: { type: 'airTime', value: 1.2 } }
+          ],
+          mergeSmoothness: 0.65,
+          weightContribution: { risk: 0.3, exploration: 0.2, perfect: 0.15 }
         },
         {
           id: 'skyroad',
@@ -212,7 +383,25 @@
           color: 0x03a9f4,
           hidden: true,
           unlockCondition: { type: 'combo', value: 3 },
-          description: '高空赛道，需要多次跳跃解锁'
+          unlockHint: '🦘 达成 3次+ 跳跃连击解锁',
+          description: '高空赛道，需要多次跳跃解锁',
+          difficulty: '传说',
+          estimatedTime: '~140秒',
+          pros: ['障碍极少', '风景绝美', '独特体验'],
+          cons: ['位置高', '坠落即死', '需要跳跃技巧'],
+          dangerZones: [
+            { startX: 9500, endX: 9800, type: 'cliff', fallChance: 0.4, warningX: 9400 }
+          ],
+          rewardZones: [
+            { startX: 9200, endX: 9500, type: 'gem', density: 0.08 },
+            { startX: 10000, endX: 10300, type: 'gem', density: 0.06 }
+          ],
+          specialEvents: [
+            { x: 9700, type: 'secretBonus', name: '天空宝藏', points: 800, oneTime: true },
+            { x: 10100, type: 'speedBoost', name: '天际加速', multiplier: 1.4, duration: 4 }
+          ],
+          mergeSmoothness: 0.5,
+          weightContribution: { risk: 0.4, exploration: 0.3, perfect: 0.1 }
         },
         {
           id: 'shortcut',
@@ -226,17 +415,47 @@
           color: 0x9c27b0,
           hidden: true,
           unlockCondition: { type: 'perfectRun', value: true },
-          description: '传说中的捷径'
+          unlockHint: '💯 前半程无伤解锁',
+          description: '传说中的捷径',
+          difficulty: '传说',
+          estimatedTime: '~85秒',
+          pros: ['距离最短', '奖励最高', '传奇成就'],
+          cons: ['极度危险', '障碍密布', '解锁条件苛刻'],
+          dangerZones: [
+            { startX: 6800, endX: 7100, type: 'rockfall', damage: 35, warningX: 6700 },
+            { startX: 7300, endX: 7600, type: 'cliff', fallChance: 0.4, warningX: 7200 },
+            { startX: 7800, endX: 8100, type: 'rockfall', damage: 30, warningX: 7700 }
+          ],
+          rewardZones: [
+            { startX: 7100, endX: 7300, type: 'gem', density: 0.08 },
+            { startX: 7600, endX: 7800, type: 'gem', density: 0.07 },
+            { startX: 8100, endX: 8400, type: 'gem', density: 0.06 }
+          ],
+          specialEvents: [
+            { x: 7500, type: 'secretBonus', name: '传说宝藏', points: 1000, oneTime: true }
+          ],
+          mergeSmoothness: 0.45,
+          weightContribution: { risk: 0.45, exploration: 0.3, perfect: 0.05 }
         }
       ],
       branchPoints: [
-        { x: 2000, type: 'split', branches: ['main', 'risky', 'canyon'] },
-        { x: 5000, type: 'merge', from: ['main', 'risky'] },
-        { x: 6500, type: 'split', branches: ['main', 'shortcut'], hidden: true },
-        { x: 8000, type: 'merge', from: ['canyon', 'main'] },
-        { x: 9000, type: 'split', branches: ['main', 'skyroad'], hidden: true }
+        { x: 2000, type: 'split', branches: ['main', 'risky', 'canyon'], hint: '选择你的冒险' },
+        { x: 5000, type: 'merge', from: ['main', 'risky'], bonus: 300 },
+        { x: 6500, type: 'split', branches: ['main', 'shortcut'], hidden: true, hint: '✨ 传说之路开启!' },
+        { x: 8000, type: 'merge', from: ['canyon', 'main'], bonus: 400 },
+        { x: 9000, type: 'split', branches: ['main', 'skyroad'], hidden: true, hint: '☁️ 天空之路开启!' }
       ],
-      mergePoint: 11500
+      mergePoint: 11500,
+      finalMergeSmoothRange: 400,
+      weightConfig: {
+        baseMultiplier: 1.0,
+        riskWeightPerLevel: 0.15,
+        explorationWeightPerBranch: 0.08,
+        perfectRunWeight: 0.25,
+        lowDamageWeight: 0.1,
+        mergeWeight: 0.05,
+        hiddenBranchBonus: 0.2
+      }
     }
   };
 
@@ -826,39 +1045,39 @@
   };
 
   proto.renderForeground = function(length, height) {
-    var mainGraphics = this.scene.add.graphics();
-    mainGraphics.setDepth(5);
+    this.mainGraphics = this.scene.add.graphics();
+    this.mainGraphics.setDepth(5);
 
-    mainGraphics.fillGradientStyle(0x8b7355, 0x8b7355, 0x654321, 0x654321);
-    mainGraphics.beginPath();
-    mainGraphics.moveTo(0, height);
+    this.mainGraphics.fillGradientStyle(0x8b7355, 0x8b7355, 0x654321, 0x654321);
+    this.mainGraphics.beginPath();
+    this.mainGraphics.moveTo(0, height);
 
     for (var i = 0; i < this.points.length; i++) {
       var p = this.points[i];
-      mainGraphics.lineTo(p.x, p.y);
+      this.mainGraphics.lineTo(p.x, p.y);
     }
 
-    mainGraphics.lineTo(length, height);
-    mainGraphics.closePath();
-    mainGraphics.fillPath();
+    this.mainGraphics.lineTo(length, height);
+    this.mainGraphics.closePath();
+    this.mainGraphics.fillPath();
 
-    var topGraphics = this.scene.add.graphics();
-    topGraphics.setDepth(6);
-    topGraphics.lineStyle(5, 0x228b22, 1);
-    topGraphics.beginPath();
+    this.topGraphics = this.scene.add.graphics();
+    this.topGraphics.setDepth(6);
+    this.topGraphics.lineStyle(5, 0x228b22, 1);
+    this.topGraphics.beginPath();
 
     for (var j = 0; j < this.points.length; j++) {
       var p2 = this.points[j];
       if (j === 0) {
-        topGraphics.moveTo(p2.x, p2.y);
+        this.topGraphics.moveTo(p2.x, p2.y);
       } else {
-        topGraphics.lineTo(p2.x, p2.y);
+        this.topGraphics.lineTo(p2.x, p2.y);
       }
     }
-    topGraphics.strokePath();
+    this.topGraphics.strokePath();
 
-    var grassGraphics = this.scene.add.graphics();
-    grassGraphics.setDepth(6);
+    this.grassGraphics = this.scene.add.graphics();
+    this.grassGraphics.setDepth(6);
 
     for (var k = 0; k < this.points.length; k++) {
       var p3 = this.points[k];
@@ -867,11 +1086,11 @@
         var nx = -Math.sin(angle);
         var ny = Math.cos(angle);
         var gh = 8 + Math.random() * 8;
-        grassGraphics.lineStyle(2, 0x32cd32, 0.8);
-        grassGraphics.beginPath();
-        grassGraphics.moveTo(p3.x, p3.y);
-        grassGraphics.lineTo(p3.x + nx * gh + (Math.random() - 0.5) * 4, p3.y - ny * gh);
-        grassGraphics.strokePath();
+        this.grassGraphics.lineStyle(2, 0x32cd32, 0.8);
+        this.grassGraphics.beginPath();
+        this.grassGraphics.moveTo(p3.x, p3.y);
+        this.grassGraphics.lineTo(p3.x + nx * gh + (Math.random() - 0.5) * 4, p3.y - ny * gh);
+        this.grassGraphics.strokePath();
       }
     }
 
@@ -897,8 +1116,14 @@
   };
 
   proto.renderBranchIndicators = function() {
-    var branchPoints = this.config.branchPoints || [];
+    if (this.indicatorGraphics) {
+      for (var d = 0; d < this.indicatorGraphics.length; d++) {
+        this.indicatorGraphics[d].destroy();
+      }
+    }
     this.indicatorGraphics = [];
+
+    var branchPoints = this.config.branchPoints || [];
 
     for (var i = 0; i < branchPoints.length; i++) {
       var bp = branchPoints[i];
@@ -964,7 +1189,61 @@
   };
 
   proto.updateActivePath = function() {
-    var mainGraphics = null;
+    if (this.mainGraphics) this.mainGraphics.destroy();
+    if (this.topGraphics) this.topGraphics.destroy();
+    if (this.grassGraphics) this.grassGraphics.destroy();
+
+    var length = this.config.length;
+    var height = 600;
+
+    this.mainGraphics = this.scene.add.graphics();
+    this.mainGraphics.setDepth(5);
+
+    this.mainGraphics.fillGradientStyle(0x8b7355, 0x8b7355, 0x654321, 0x654321);
+    this.mainGraphics.beginPath();
+    this.mainGraphics.moveTo(0, height);
+
+    for (var i = 0; i < this.points.length; i++) {
+      var p = this.points[i];
+      this.mainGraphics.lineTo(p.x, p.y);
+    }
+
+    this.mainGraphics.lineTo(length, height);
+    this.mainGraphics.closePath();
+    this.mainGraphics.fillPath();
+
+    this.topGraphics = this.scene.add.graphics();
+    this.topGraphics.setDepth(6);
+    this.topGraphics.lineStyle(5, 0x228b22, 1);
+    this.topGraphics.beginPath();
+
+    for (var j = 0; j < this.points.length; j++) {
+      var p2 = this.points[j];
+      if (j === 0) {
+        this.topGraphics.moveTo(p2.x, p2.y);
+      } else {
+        this.topGraphics.lineTo(p2.x, p2.y);
+      }
+    }
+    this.topGraphics.strokePath();
+
+    this.grassGraphics = this.scene.add.graphics();
+    this.grassGraphics.setDepth(6);
+
+    for (var k = 0; k < this.points.length; k++) {
+      var p3 = this.points[k];
+      if (Math.random() < 0.08) {
+        var angle = this.getAngle(p3.x);
+        var nx = -Math.sin(angle);
+        var ny = Math.cos(angle);
+        var gh = 8 + Math.random() * 8;
+        this.grassGraphics.lineStyle(2, 0x32cd32, 0.8);
+        this.grassGraphics.beginPath();
+        this.grassGraphics.moveTo(p3.x, p3.y);
+        this.grassGraphics.lineTo(p3.x + nx * gh + (Math.random() - 0.5) * 4, p3.y - ny * gh);
+        this.grassGraphics.strokePath();
+      }
+    }
   };
 
   proto.destroy = function() {
@@ -973,6 +1252,9 @@
         this.indicatorGraphics[i].destroy();
       }
     }
+    if (this.mainGraphics) { this.mainGraphics.destroy(); this.mainGraphics = null; }
+    if (this.topGraphics) { this.topGraphics.destroy(); this.topGraphics = null; }
+    if (this.grassGraphics) { this.grassGraphics.destroy(); this.grassGraphics = null; }
   };
 
   window.MountainRacer = MountainRacer;

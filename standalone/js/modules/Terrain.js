@@ -4,6 +4,7 @@
   MountainRacer.LEVEL_CONFIGS = {
     1: {
       name: '初级赛道',
+      sceneType: 'exploration',
       length: 5000,
       baseHeight: 450,
       amplitude: 60,
@@ -123,6 +124,7 @@
     },
     2: {
       name: '中级赛道',
+      sceneType: 'all',
       length: 8000,
       baseHeight: 430,
       amplitude: 90,
@@ -269,6 +271,7 @@
     },
     3: {
       name: '高级赛道',
+      sceneType: 'racing',
       length: 12000,
       baseHeight: 400,
       amplitude: 120,

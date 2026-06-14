@@ -63,7 +63,22 @@
 
     this.lastBreakthroughShown = null;
 
+    this.autoLoadSceneLayout();
+
     this.loadUnlockedBranches();
+  };
+
+  proto.autoLoadSceneLayout = function() {
+    var sceneType = this.terrain.config.sceneType;
+    if (!sceneType) return;
+
+    var lm = this.inputManager.layoutManager;
+    if (!lm || !lm.hasScenePreset || !lm.hasScenePreset(sceneType)) return;
+
+    var loaded = lm.loadScenePreset(sceneType);
+    if (loaded) {
+      this.inputManager.rebuildTouchControls();
+    }
   };
 
   proto.loadUnlockedBranches = function() {

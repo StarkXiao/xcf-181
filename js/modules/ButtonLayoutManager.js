@@ -286,10 +286,26 @@
   proto.saveScenePreset = function(sceneType) {
     try {
       var key = SCENE_KEY + '_' + sceneType;
-      localStorage.setItem(key, JSON.stringify({
+      var saveData = {
         activePresetName: this.activePresetName,
-        layout: this.currentLayout
-      }));
+        layout: {}
+      };
+      var actions = this.getAllButtonActions();
+      for (var i = 0; i < actions.length; i++) {
+        var action = actions[i];
+        var cfg = this.getButtonConfig(action);
+        if (cfg) {
+          saveData.layout[action] = {
+            x: cfg.x,
+            y: cfg.y,
+            scale: cfg.scale,
+            opacity: cfg.opacity,
+            visible: cfg.visible !== false
+          };
+        }
+      }
+      saveData.baseBtnSize = this.baseBtnSize;
+      localStorage.setItem(key, JSON.stringify(saveData));
     } catch (e) {}
   };
 
@@ -297,14 +313,49 @@
     try {
       var key = SCENE_KEY + '_' + sceneType;
       var saved = localStorage.getItem(key);
+      if (!saved) return false;
+
+      var data = JSON.parse(saved);
+      if (!data.layout) return false;
+
+      if (data.activePresetName && this.presets[data.activePresetName]) {
+        this.activePresetName = data.activePresetName;
+      } else {
+        this.activePresetName = '场景方案';
+      }
+
+      var actions = this.getAllButtonActions();
+      for (var i = 0; i < actions.length; i++) {
+        var action = actions[i];
+        var savedCfg = data.layout[action];
+        if (savedCfg && this.currentLayout[action]) {
+          this.currentLayout[action].x = typeof savedCfg.x === 'number' ? savedCfg.x : this.currentLayout[action].x;
+          this.currentLayout[action].y = typeof savedCfg.y === 'number' ? savedCfg.y : this.currentLayout[action].y;
+          this.currentLayout[action].scale = typeof savedCfg.scale === 'number' ? savedCfg.scale : 1.0;
+          this.currentLayout[action].opacity = typeof savedCfg.opacity === 'number' ? savedCfg.opacity : 0.5;
+          if (typeof savedCfg.visible !== 'undefined') {
+            this.currentLayout[action].visible = savedCfg.visible;
+          }
+        }
+      }
+
+      if (typeof data.baseBtnSize === 'number') {
+        this.baseBtnSize = data.baseBtnSize;
+      }
+
+      this._saveActivePreset();
+      return true;
+    } catch (e) {}
+    return false;
+  };
+
+  proto.hasScenePreset = function(sceneType) {
+    try {
+      var key = SCENE_KEY + '_' + sceneType;
+      var saved = localStorage.getItem(key);
       if (saved) {
         var data = JSON.parse(saved);
-        if (data.activePresetName && this.presets[data.activePresetName]) {
-          this.activePresetName = data.activePresetName;
-          this._applyActivePreset();
-          this._saveActivePreset();
-          return true;
-        }
+        return data && data.layout && Object.keys(data.layout).length > 0;
       }
     } catch (e) {}
     return false;
