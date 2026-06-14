@@ -47,6 +47,8 @@
     this.gameOver = false;
     this.damageCooldown = 0;
     this.rampCooldown = 0;
+    this.rolloverDamageApplied = false;
+    this.rolloverCorrectionTextShown = false;
 
     this.branchSelectOpen = false;
     this.lastBranchPoint = -1;
@@ -2093,6 +2095,8 @@
     this.damageCooldown = Math.max(0, this.damageCooldown - delta);
     this.rampCooldown = Math.max(0, this.rampCooldown - delta);
 
+    this.checkRollover(carX, delta);
+
     this.checkSpecialEvents(carX, delta);
 
     if (this.activeSpeedBoost && Date.now() > this.speedBoostEndTime) {
@@ -3167,6 +3171,98 @@
     }
   };
 
+  proto.checkRollover = function(carX, delta) {
+    if (this.gameOver) return;
+
+    var rolloverState = this.carPhysics.getRolloverState();
+
+    if (rolloverState.damagePending && !this.rolloverDamageApplied) {
+      var result = this.scoreManager.takeRolloverDamage(delta);
+      if (result.applied) {
+        this.rolloverDamageApplied = true;
+        this.carPhysics.applyDamage();
+        this.screenShake(8, 300);
+        this.showFloatingText(carX, this.carPhysics.car.y - 100,
+          '🔄 翻车! -' + result.damage + ' HP', 0xf44336);
+
+        if (this.scoreManager.comboBreakReason === 'damage') {
+          this.showFloatingText(carX, this.carPhysics.car.y - 140, '💥 连击中断!', 0xf44336);
+        }
+
+        if (result.dead) {
+          this.gameOver = true;
+          this.scoreManager.saveHighScore();
+          this.showGameOver(false, '翻车损毁');
+          return;
+        }
+      }
+    }
+
+    if (rolloverState.isRollover && !rolloverState.isCorrecting) {
+      if (!this.rolloverWarningShown) {
+        this.showRolloverWarning();
+        this.rolloverWarningShown = true;
+      }
+    } else {
+      if (this.rolloverWarningShown) {
+        this.hideRolloverWarning();
+      }
+    }
+
+    if (rolloverState.isCorrecting && !this.rolloverCorrectionTextShown) {
+      this.showFloatingText(carX, this.carPhysics.car.y - 80,
+        '↩️ 自动扶正中...', 0xff9800);
+      this.rolloverCorrectionTextShown = true;
+    }
+
+    if (!rolloverState.isCorrecting) {
+      this.rolloverCorrectionTextShown = false;
+    }
+
+    if (!rolloverState.isRollover && !rolloverState.isCorrecting && !rolloverState.damagePending) {
+      this.rolloverDamageApplied = false;
+    }
+  };
+
+  proto.showRolloverWarning = function() {
+    var width = this.scale.width;
+
+    if (this.rolloverWarningGfx) this.hideRolloverWarning();
+
+    this.rolloverWarningGfx = this.add.graphics();
+    this.rolloverWarningGfx.setScrollFactor(0);
+    this.rolloverWarningGfx.setDepth(800);
+    this.rolloverWarningGfx.fillStyle(0xff5722, 0.9);
+    this.rolloverWarningGfx.fillRoundedRect(width / 2 - 110, 75, 220, 32, 8);
+
+    this.rolloverWarningText = this.add.text(width / 2, 91, '⚠️ 车辆翻覆!', {
+      fontSize: '16px',
+      fontWeight: 'bold',
+      color: '#ffffff'
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(801);
+
+    this.tweens.add({
+      targets: this.rolloverWarningGfx,
+      alpha: { from: 1, to: 0.5 },
+      duration: 300,
+      yoyo: true,
+      repeat: -1
+    });
+  };
+
+  proto.hideRolloverWarning = function() {
+    this.rolloverWarningShown = false;
+    if (this.rolloverWarningGfx) {
+      this.tweens.killTweensOf(this.rolloverWarningGfx);
+      this.rolloverWarningGfx.destroy();
+      this.rolloverWarningGfx = null;
+    }
+    if (this.rolloverWarningText) {
+      this.rolloverWarningText.destroy();
+      this.rolloverWarningText = null;
+    }
+  };
+
   proto.screenShake = function(intensity, duration) {
     this.cameras.main.shake(duration, intensity / 1000);
   };
@@ -3264,6 +3360,7 @@
       this.hiddenHintText = null;
     }
     this.hideDangerWarning();
+    this.hideRolloverWarning();
     this.closeBranchSelect();
   };
 

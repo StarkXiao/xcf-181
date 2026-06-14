@@ -39,6 +39,17 @@
     this.angularVelocity = 0;
     this.angle = 0;
     this.lastAngle = 0;
+
+    this.isRollover = false;
+    this.rolloverTimer = 0;
+    this.rolloverCorrectionTimer = 0;
+    this.rolloverCooldown = 0;
+    this.rolloverDamagePending = false;
+    this.rolloverAngleThreshold = Math.PI * 0.55;
+    this.rolloverGracePeriod = 0.6;
+    this.rolloverCorrectionDuration = 0.4;
+    this.rolloverCooldownDuration = 3.0;
+    this.rolloverCount = 0;
   };
 
   var proto = MountainRacer.CarPhysics.prototype;
@@ -244,7 +255,78 @@
       return 'fell';
     }
 
+    this.updateRollover(dt, terrain);
+
     return null;
+  };
+
+  proto.updateRollover = function(dt, terrain) {
+    this.rolloverCooldown = Math.max(0, this.rolloverCooldown - dt);
+
+    if (this.rolloverCorrectionTimer > 0) {
+      this.rolloverCorrectionTimer -= dt;
+      var normal = terrain.getNormal(this.car.x);
+      var targetAngle = Math.atan2(-normal.x, normal.y);
+      var correctionProgress = 1 - Math.max(0, this.rolloverCorrectionTimer) / this.rolloverCorrectionDuration;
+      var lerpFactor = Math.min(1, correctionProgress * 3);
+      this.angle = Phaser.Math.Angle.Wrap(this.angle + Phaser.Math.Angle.Wrap(targetAngle - this.angle) * lerpFactor);
+      this.angularVelocity = 0;
+      this.vx *= 0.92;
+
+      if (this.rolloverCorrectionTimer <= 0) {
+        this.isRollover = false;
+        this.rolloverCooldown = this.rolloverCooldownDuration;
+        this.rolloverDamagePending = false;
+      }
+      return;
+    }
+
+    if (this.rolloverCooldown > 0) return;
+
+    if (this.isGrounded) {
+      var absAngle = Math.abs(Phaser.Math.Angle.Wrap(this.angle));
+      if (absAngle > this.rolloverAngleThreshold) {
+        if (!this.isRollover) {
+          this.isRollover = true;
+          this.rolloverTimer = 0;
+          this.rolloverDamagePending = true;
+          this.rolloverCount++;
+        }
+
+        this.rolloverTimer += dt;
+
+        if (this.rolloverTimer >= this.rolloverGracePeriod) {
+          this.rolloverCorrectionTimer = this.rolloverCorrectionDuration;
+          this.rolloverTimer = 0;
+        }
+      } else {
+        if (this.isRollover) {
+          this.isRollover = false;
+          this.rolloverTimer = 0;
+          this.rolloverDamagePending = false;
+        }
+      }
+    } else {
+      if (this.isRollover) {
+        this.isRollover = false;
+        this.rolloverTimer = 0;
+        this.rolloverDamagePending = false;
+      }
+    }
+  };
+
+  proto.getRolloverState = function() {
+    return {
+      isRollover: this.isRollover,
+      rolloverTimer: this.rolloverTimer,
+      isCorrecting: this.rolloverCorrectionTimer > 0,
+      correctionProgress: this.rolloverCorrectionTimer > 0 ?
+        1 - this.rolloverCorrectionTimer / this.rolloverCorrectionDuration : 0,
+      onCooldown: this.rolloverCooldown > 0,
+      cooldownRemaining: this.rolloverCooldown,
+      damagePending: this.rolloverDamagePending,
+      rolloverCount: this.rolloverCount
+    };
   };
 
   proto.updateWheelPositions = function() {

@@ -50,6 +50,12 @@
     this.destructibleScore = 0;
     this.destructibleCombo = 0;
 
+    this.rolloverDamageCooldown = 0;
+    this.rolloverDamageCooldownDuration = 5.0;
+    this.rolloverDamageAmount = 15;
+    this.rolloverCount = 0;
+    this.lastRolloverDamageTime = 0;
+
     this.bonusScores = {
       distance: 0,
       timeBonus: 0,
@@ -334,6 +340,19 @@
       this.isGameOver = true;
     }
     return this.health <= 0;
+  };
+
+  proto.takeRolloverDamage = function(delta) {
+    this.rolloverDamageCooldown = Math.max(0, this.rolloverDamageCooldown - delta / 1000);
+    if (this.rolloverDamageCooldown > 0) {
+      return { applied: false, reason: 'cooldown', dead: false };
+    }
+
+    var dead = this.takeDamage(this.rolloverDamageAmount);
+    this.rolloverCount++;
+    this.rolloverDamageCooldown = this.rolloverDamageCooldownDuration;
+    this.lastRolloverDamageTime = Date.now() - this.startTime;
+    return { applied: true, damage: this.rolloverDamageAmount, dead: dead, rolloverCount: this.rolloverCount };
   };
 
   proto.getHealthPercent = function() {
