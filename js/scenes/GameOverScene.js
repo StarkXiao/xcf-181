@@ -37,15 +37,18 @@
     this.createBackground(width, height);
     this.createResultPanel(width, height);
 
-    if (this.win && this.detailedStats) {
+    if (this.win && this.starRating) {
+      this.createHighScoreCelebration(width, height);
+      this.createButtons(width, height);
+    } else if (this.win && this.detailedStats) {
       this.createHighScoreCelebration(width, height);
       this.createTabs(width, height);
       this.createSummaryTab(width, height);
+      this.createButtons(width, height);
     } else {
       this.createStats(width, height);
+      this.createButtons(width, height);
     }
-
-    this.createButtons(width, height);
   };
 
   proto.createBackground = function(width, height) {
@@ -94,7 +97,7 @@
   proto.createResultPanel = function(width, height) {
     var panelW = 420;
     var needStarPanel = this.win && this.starRating;
-    var panelH = needStarPanel ? 980 : (this.win && this.detailedStats ? 780 : 430);
+    var panelH = needStarPanel ? 590 : (this.win && this.detailedStats ? 780 : 430);
 
     var shadow = this.add.graphics();
     shadow.fillStyle(0x000000, 0.4);
@@ -109,19 +112,19 @@
     panel.strokeRoundedRect(width / 2 - panelW / 2, height / 2 - panelH / 2, panelW, panelH, 20);
 
     var resultIcon = this.win ? '🏆' : '💥';
-    this.add.text(width / 2, height / 2 - panelH / 2 + 55, resultIcon, {
-      fontSize: '52px'
+    this.add.text(width / 2, height / 2 - panelH / 2 + 38, resultIcon, {
+      fontSize: '36px'
     }).setOrigin(0.5);
 
     var resultTitle = this.win ? '🎉 通关成功!' : '💥 挑战失败';
-    this.add.text(width / 2, height / 2 - panelH / 2 + 105, resultTitle, {
-      fontSize: '30px',
+    this.add.text(width / 2, height / 2 - panelH / 2 + 75, resultTitle, {
+      fontSize: '22px',
       fontWeight: 'bold',
       color: this.win ? '#2e7d32' : '#c62828'
     }).setOrigin(0.5);
 
-    this.add.text(width / 2, height / 2 - panelH / 2 + 140, this.message, {
-      fontSize: '15px',
+    this.add.text(width / 2, height / 2 - panelH / 2 + 102, this.message, {
+      fontSize: '12px',
       color: '#666666'
     }).setOrigin(0.5);
 
@@ -134,7 +137,7 @@
     var isNewRecord = this.win && this.score >= this.highScore && this.score > 0;
     var hasStarPanel = this.win && this.starRating;
     if (isNewRecord) {
-      var recordY = hasStarPanel ? (height / 2 - panelH / 2 + 420) : (height / 2 - panelH / 2 + 220);
+      var recordY = hasStarPanel ? (height / 2 - panelH / 2 + 125) : (height / 2 - panelH / 2 + 220);
       var record = this.add.text(width / 2, recordY, '✨ 新纪录! ✨', {
         fontSize: '18px',
         fontWeight: 'bold',
@@ -154,14 +157,14 @@
 
   proto.createStarRatingPanel = function(width, height, panelH) {
     var starRating = this.starRating;
-    var baseY = height / 2 - panelH / 2 + 195;
+    var baseY = height / 2 - panelH / 2 + 120;
     var stars = starRating.stars || 0;
     var maxStars = starRating.maxStars || 3;
 
     var starContainer = this.add.container(width / 2, baseY);
 
-    var bigStarSize = 52;
-    var starSpacing = 70;
+    var bigStarSize = 42;
+    var starSpacing = 58;
     var totalWidth = (maxStars - 1) * starSpacing;
     var startX = -totalWidth / 2;
 
@@ -173,9 +176,9 @@
 
       var starBg = this.add.graphics();
       starBg.fillStyle(0xf8f9fa, 1);
-      starBg.fillCircle(0, 0, 36);
+      starBg.fillCircle(0, 0, 30);
       starBg.lineStyle(3, isAchieved ? 0xffd700 : 0xdddddd, 1);
-      starBg.strokeCircle(0, 0, 36);
+      starBg.strokeCircle(0, 0, 30);
       starBg.x = startX + i * starSpacing;
       starContainer.add(starBg);
 
@@ -228,14 +231,14 @@
       resultColor = '#4caf50';
     }
 
-    var labelText = this.add.text(0, 55, resultLabel, {
-      fontSize: '20px',
+    var labelText = this.add.text(0, 42, resultLabel, {
+      fontSize: '17px',
       fontWeight: 'bold',
       color: resultColor
     }).setOrigin(0.5);
     starContainer.add(labelText);
 
-    this.createStarConditionsDetail(width, height, panelH, baseY + 100);
+    this.createStarConditionsDetail(width, height, panelH, baseY + 78);
   };
 
   proto.createStarConditionsDetail = function(width, height, panelH, startY) {
@@ -263,59 +266,59 @@
       var cond = conditions[key];
       if (!cond) continue;
 
-      var rowY = startY + 12 + i * 52;
+      var rowY = startY + 8 + i * 42;
 
       var rowBg = this.add.graphics();
       rowBg.fillStyle(cond.achieved ? 0xe8f5e9 : 0xfafafa, 1);
-      rowBg.fillRoundedRect(leftX, rowY - 18, panelW, 48, 8);
+      rowBg.fillRoundedRect(leftX, rowY - 14, panelW, 40, 6);
       rowBg.lineStyle(1, cond.achieved ? 0x4caf50 : 0xe0e0e0, 1);
-      rowBg.strokeRoundedRect(leftX, rowY - 18, panelW, 48, 8);
+      rowBg.strokeRoundedRect(leftX, rowY - 14, panelW, 40, 6);
 
-      var iconText = this.add.text(leftX + 15, rowY, cond.icon || '⭐', {
-        fontSize: '20px'
+      var iconText = this.add.text(leftX + 12, rowY, cond.icon || '⭐', {
+        fontSize: '16px'
       }).setOrigin(0, 0.5);
 
-      var starNum = this.add.text(leftX + 50, rowY - 10,
+      var starNum = this.add.text(leftX + 40, rowY - 8,
         (i + 1) + '★ ' + cond.label, {
-          fontSize: '13px',
+          fontSize: '12px',
           fontWeight: 'bold',
           color: cond.achieved ? '#2e7d32' : '#666666'
         }).setOrigin(0, 0.5);
 
-      var detailText = this.add.text(leftX + 50, rowY + 8, cond.detail, {
-        fontSize: '10px',
+      var detailText = this.add.text(leftX + 40, rowY + 6, cond.detail, {
+        fontSize: '9px',
         color: cond.achieved ? '#4caf50' : '#999999'
       }).setOrigin(0, 0.5);
 
       var statusChar = cond.achieved ? '✅' : '⭕';
-      var statusText = this.add.text(leftX + panelW - 18, rowY, statusChar, {
-        fontSize: '18px'
+      var statusText = this.add.text(leftX + panelW - 15, rowY, statusChar, {
+        fontSize: '16px'
       }).setOrigin(1, 0.5);
 
       if (cond.actual && !cond.achieved) {
-        var actualText = this.add.text(leftX + panelW - 18, rowY + 10, cond.actual, {
-          fontSize: '9px',
+        var actualText = this.add.text(leftX + panelW - 15, rowY + 9, cond.actual, {
+          fontSize: '8px',
           color: '#ff9800',
           fontStyle: 'italic'
         }).setOrigin(1, 0.5);
       }
     }
 
-    var dimY = startY + 12 + 3 * 52 + 12;
+    var dimY = startY + 8 + 3 * 42 + 8;
     this.createStarDimensionBars(width, dimY, breakdown);
   };
 
   proto.createStarDimensionBars = function(width, startY, breakdown) {
     var panelW = 360;
     var leftX = width / 2 - 180;
-    var barMaxWidth = 200;
-    var barHeight = 14;
+    var barMaxWidth = 180;
+    var barHeight = 12;
 
     var header = this.add.graphics();
     header.fillStyle(0xf0f4ff, 1);
-    header.fillRoundedRect(leftX, startY, panelW, 22, 6);
-    var headerText = this.add.text(width / 2, startY + 11, '📊 三维度达成度', {
-      fontSize: '12px',
+    header.fillRoundedRect(leftX, startY, panelW, 20, 5);
+    var headerText = this.add.text(width / 2, startY + 10, '📊 三维度达成度', {
+      fontSize: '11px',
       fontWeight: 'bold',
       color: '#2196f3'
     }).setOrigin(0.5);
@@ -337,7 +340,7 @@
         label: '完成时间',
         pct: timePct,
         value: (timeData.value || 0) + 's',
-        target: '目标≤' + (timeData.threeStarTarget || 0) + 's / ≤' + (timeData.twoStarTarget || 0) + 's',
+        target: '≤' + (timeData.threeStarTarget || 0) + 's / ≤' + (timeData.twoStarTarget || 0) + 's',
         threeStar: timeData.threeStar,
         twoStar: timeData.twoStar,
         color: 0x2196f3,
@@ -348,7 +351,7 @@
         label: '剩余生命',
         pct: healthPct,
         value: (healthData.value || 0) + '%',
-        target: '目标≥' + (healthData.threeStarTarget || 0) + '% / ≥' + (healthData.twoStarTarget || 0) + '%',
+        target: '≥' + (healthData.threeStarTarget || 0) + '% / ≥' + (healthData.twoStarTarget || 0) + '%',
         threeStar: healthData.threeStar,
         twoStar: healthData.twoStar,
         color: 0xe91e63,
@@ -358,10 +361,10 @@
         icon: '🗺️',
         label: '隐藏目标',
         pct: hiddenPct,
-        value: (hiddenData.branchesVisited || 0) + '/' + (hiddenData.totalBranches || 0) + ' 路线',
+        value: (hiddenData.branchesVisited || 0) + '/' + (hiddenData.totalBranches || 0),
         target: hiddenData.totalHiddenBranches > 0 ?
-          '探索所有' + (hiddenData.totalBranches || 0) + '条路线 (含' + hiddenData.totalHiddenBranches + '隐藏)' :
-          '探索所有路线',
+          '所有路线(含' + hiddenData.totalHiddenBranches + '隐藏)' :
+          '所有路线',
         threeStar: hiddenData.achieved,
         twoStar: hiddenData.branchesVisited > 1,
         color: 0x9c27b0,
@@ -371,51 +374,51 @@
 
     for (var d = 0; d < dimensions.length; d++) {
       var dim = dimensions[d];
-      var y = startY + 35 + d * 46;
+      var y = startY + 32 + d * 40;
 
       var rowBg = this.add.graphics();
       rowBg.fillStyle(d % 2 === 0 ? 0xfafafa : 0xf8f9fa, 1);
-      rowBg.fillRoundedRect(leftX, y - 14, panelW, 42, 6);
+      rowBg.fillRoundedRect(leftX, y - 12, panelW, 36, 5);
 
       var iconT = this.add.text(leftX + 10, y, dim.icon, {
-        fontSize: '16px'
+        fontSize: '14px'
       }).setOrigin(0, 0.5);
 
-      var labelT = this.add.text(leftX + 35, y - 8, dim.label, {
-        fontSize: '11px',
+      var labelT = this.add.text(leftX + 32, y - 6, dim.label, {
+        fontSize: '10px',
         fontWeight: 'bold',
         color: '#333333'
       }).setOrigin(0, 0.5);
 
-      var targetT = this.add.text(leftX + 35, y + 7, dim.target, {
-        fontSize: '9px',
+      var targetT = this.add.text(leftX + 32, y + 6, dim.target, {
+        fontSize: '8px',
         color: '#999999'
       }).setOrigin(0, 0.5);
 
-      var barX = leftX + 145;
+      var barX = leftX + 130;
       var barBg = this.add.graphics();
       barBg.fillStyle(0xe0e0e0, 0.6);
-      barBg.fillRoundedRect(barX, y - 6, barMaxWidth, barHeight, 7);
+      barBg.fillRoundedRect(barX, y - 6, barMaxWidth, barHeight, 6);
 
       var fillW = Math.max(3, (dim.pct / 100) * barMaxWidth);
       var barFill = this.add.graphics();
       barFill.fillStyle(dim.color, 0.9);
-      barFill.fillRoundedRect(barX, y - 6, fillW, barHeight, 7);
+      barFill.fillRoundedRect(barX, y - 6, fillW, barHeight, 6);
 
       var valueT = this.add.text(barX + barMaxWidth + 5, y, dim.value, {
-        fontSize: '11px',
+        fontSize: '10px',
         fontWeight: 'bold',
         color: dim.colorStr
       }).setOrigin(0, 0.5);
 
       if (dim.threeStar) {
-        var markT = this.add.text(barX + barMaxWidth - 5, y - 12, '★★★', {
-          fontSize: '10px',
+        var markT = this.add.text(barX + barMaxWidth - 3, y - 10, '★★★', {
+          fontSize: '9px',
           color: '#ffd700'
         }).setOrigin(1, 0.5);
       } else if (dim.twoStar) {
-        var mark2T = this.add.text(barX + barMaxWidth - 5, y - 12, '★★', {
-          fontSize: '10px',
+        var mark2T = this.add.text(barX + barMaxWidth - 3, y - 10, '★★', {
+          fontSize: '9px',
           color: '#ff9800'
         }).setOrigin(1, 0.5);
       }
@@ -544,7 +547,7 @@
   proto.createTabs = function(width, height) {
     var self = this;
     var panelW = 420;
-    var tabY = this.starRating ? (height / 2 + 105) : (height / 2 - 80);
+    var tabY = this.starRating ? (height / 2 + 5) : (height / 2 - 80);
     var tabW = panelW / 3 - 4;
     var startX = width / 2 - panelW / 2 + 15;
 
@@ -1415,7 +1418,7 @@
     var btnW = 160;
     var btnH = 48;
     var panelOffset = 160;
-    if (this.win && this.starRating) panelOffset = 410;
+    if (this.win && this.starRating) panelOffset = 250;
     else if (this.win && this.detailedStats) panelOffset = 310;
     var btnY = height / 2 + panelOffset;
     var gap = 20;

@@ -175,7 +175,7 @@
   proto.createLevelCardStars = function(level, cardWidth, cardHeight, container) {
     var starData = this.getSavedStarRating(level);
     var stars = starData.stars || 0;
-    var starY = cardHeight / 2 - 58;
+    var starY = cardHeight / 2 - 42;
     var starSize = 22;
     var startX = -((3 - 1) * starSize) / 2;
 
@@ -295,7 +295,19 @@
         color: '#666666'
       }).setOrigin(0.5);
 
+      container.add([gfx, levelNum, levelName, diffText, lenText]);
+
       this.createLevelCardStars(level, cardWidth, cardHeight, container);
+
+      var highScore = this.getHighScore(level);
+      if (highScore > 0) {
+        var hsText = this.add.text(0, cardHeight / 2 - 20, '最高分: ' + highScore, {
+          fontSize: '13px',
+          fontWeight: 'bold',
+          color: '#ff6b35'
+        }).setOrigin(0.5);
+        container.add(hsText);
+      }
 
       var unlocked = this.isLevelUnlocked(level);
       if (!unlocked) {
@@ -309,18 +321,6 @@
         }).setOrigin(0.5);
         container.add([lockGfx, lockText]);
       }
-
-      var highScore = this.getHighScore(level);
-      if (highScore > 0) {
-        var hsText = this.add.text(0, cardHeight / 2 - 20, '最高分: ' + highScore, {
-          fontSize: '13px',
-          fontWeight: 'bold',
-          color: '#ff6b35'
-        }).setOrigin(0.5);
-        container.add(hsText);
-      }
-
-      container.add([gfx, levelNum, levelName, diffText, lenText]);
 
       if (unlocked) {
         var self = this;
