@@ -16,6 +16,7 @@
 
     this.createBackground(width, height);
     this.createTitle(width, height);
+    this.createChapterProgress(width, height);
     this.createLevelCards(width, height);
     this.createCarSelection(width, height);
     this.createInstructions(width, height);
@@ -120,8 +121,125 @@
     }).setOrigin(0.5);
   };
 
+  proto.createChapterProgress = function(width, height) {
+    var summary = this.getChapterStarSummary();
+    var barY = 200;
+    var barWidth = 520;
+    var barHeight = 24;
+
+    var container = this.add.container(width / 2, barY);
+
+    var label = this.add.text(-barWidth / 2, -14, '🌟 章节进度', {
+      fontSize: '14px',
+      fontWeight: 'bold',
+      color: '#ffd700',
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0, 0.5);
+    container.add(label);
+
+    var starText = this.add.text(barWidth / 2, -14,
+      summary.totalStars + ' / ' + summary.maxStars + ' ⭐', {
+        fontSize: '14px',
+        fontWeight: 'bold',
+        color: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 3
+      }).setOrigin(1, 0.5);
+    container.add(starText);
+
+    var bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.4);
+    bg.fillRoundedRect(-barWidth / 2, 0, barWidth, barHeight, 12);
+    container.add(bg);
+
+    var progressWidth = (summary.completionPercent / 100) * (barWidth - 8);
+    var progress = this.add.graphics();
+    progress.fillGradientStyle(0xffd700, 0xffb300, 0xffd700, 0xffb300);
+    progress.fillRoundedRect(-barWidth / 2 + 4, 4, Math.max(4, progressWidth), barHeight - 8, 8);
+    container.add(progress);
+
+    var pctText = this.add.text(0, barHeight / 2,
+      summary.completionPercent + '%', {
+        fontSize: '12px',
+        fontWeight: 'bold',
+        color: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 2
+      }).setOrigin(0.5, 0.5);
+    container.add(pctText);
+
+    this.chapterProgressContainer = container;
+  };
+
+  proto.createLevelCardStars = function(level, cardWidth, cardHeight, container) {
+    var starData = this.getSavedStarRating(level);
+    var stars = starData.stars || 0;
+    var starY = cardHeight / 2 - 58;
+    var starSize = 22;
+    var startX = -((3 - 1) * starSize) / 2;
+
+    for (var i = 0; i < 3; i++) {
+      var isFilled = i < stars;
+      var starChar = isFilled ? '⭐' : '☆';
+      var color = isFilled ? '#ffd700' : '#cccccc';
+      var star = this.add.text(startX + i * starSize, starY, starChar, {
+        fontSize: starSize + 'px',
+        color: color,
+        stroke: isFilled ? '#000000' : '#999999',
+        strokeThickness: isFilled ? 2 : 0
+      }).setOrigin(0.5, 0.5);
+      container.add(star);
+
+      if (isFilled && stars === 3) {
+        this.tweens.add({
+          targets: star,
+          scale: { from: 1, to: 1.15 },
+          duration: 800 + i * 200,
+          ease: 'Sine.easeInOut',
+          yoyo: true,
+          repeat: -1,
+          delay: i * 150
+        });
+      }
+    }
+  };
+
+  proto.getSavedStarRating = function(level) {
+    try {
+      var key = 'mountain_racer_stars_' + level;
+      var saved = localStorage.getItem(key);
+      return saved ? JSON.parse(saved) : { stars: 0, totalStars: 3 };
+    } catch (e) {
+      return { stars: 0, totalStars: 3 };
+    }
+  };
+
+  proto.getChapterStarSummary = function() {
+    try {
+      var totalLevels = 3;
+      var result = {
+        totalStars: 0,
+        maxStars: totalLevels * 3,
+        levelStars: {},
+        completionPercent: 0
+      };
+
+      for (var lvl = 1; lvl <= totalLevels; lvl++) {
+        var saved = this.getSavedStarRating(lvl);
+        result.levelStars[lvl] = saved.stars || 0;
+        result.totalStars += saved.stars || 0;
+      }
+
+      result.completionPercent = Math.floor((result.totalStars / result.maxStars) * 100);
+      return result;
+    } catch (e) {
+      return { totalStars: 0, maxStars: 9, levelStars: {}, completionPercent: 0 };
+    }
+  };
+
   proto.createLevelCards = function(width, height) {
-    var cardY = 250;
+    var cardY = 310;
     var cardWidth = 210;
     var cardHeight = 160;
     var spacing = 30;
@@ -176,6 +294,8 @@
         fontSize: '14px',
         color: '#666666'
       }).setOrigin(0.5);
+
+      this.createLevelCardStars(level, cardWidth, cardHeight, container);
 
       var unlocked = this.isLevelUnlocked(level);
       if (!unlocked) {
@@ -247,7 +367,7 @@
   };
 
   proto.createCarSelection = function(width, height) {
-    var panelY = 375;
+    var panelY = 435;
     var panelWidth = 680;
     var panelHeight = 80;
 
@@ -473,7 +593,7 @@
 
     var floatText = this.add.text(
       this.scale.width / 2,
-      440,
+      500,
       '🔒 ' + carCfg.name + ': ' + hint,
       {
         fontSize: '13px',
@@ -503,7 +623,7 @@
   };
 
   proto.createInstructions = function(width, height) {
-    var panelY = 505;
+    var panelY = 565;
     var panelWidth = 680;
     var panelHeight = 60;
 

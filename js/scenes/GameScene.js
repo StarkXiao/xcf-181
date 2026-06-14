@@ -2480,6 +2480,7 @@
     var runHistory = this.scoreManager.getRunHistory();
     var previousBest = this.scoreManager.previousBestStats;
     var replayComparison = this.scoreManager.getReplayComparisonData();
+    var starRating = win ? this.scoreManager.getStarRating() : null;
 
     this.time.delayedCall(600, function() {
       self.scene.start('GameOverScene', {
@@ -2496,7 +2497,8 @@
         performanceGrade: performanceGrade,
         runHistory: runHistory,
         previousBestStats: previousBest,
-        replayComparison: replayComparison
+        replayComparison: replayComparison,
+        starRating: starRating
       });
     });
   };
