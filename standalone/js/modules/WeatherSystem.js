@@ -336,6 +336,58 @@
     return baseFriction * weatherFriction;
   };
 
+  proto.getTerrainTypeAt = function(x, branchId, terrain) {
+    var terrainType = 'normal';
+
+    var weatherId = this.currentWeather;
+    if (weatherId === 'rain' || weatherId === 'heavyRain') {
+      terrainType = 'wet';
+    } else if (weatherId === 'snow' || weatherId === 'blizzard') {
+      terrainType = 'icy';
+    } else if (weatherId === 'sandstorm') {
+      terrainType = 'sandy';
+    } else if (weatherId === 'fog') {
+      terrainType = 'wet';
+    }
+
+    if (terrain && branchId) {
+      var branchCfg = null;
+      try {
+        branchCfg = terrain.getBranchConfig(branchId);
+      } catch (e) {
+        branchCfg = null;
+      }
+
+      if (branchCfg && branchCfg.dangerZones) {
+        for (var i = 0; i < branchCfg.dangerZones.length; i++) {
+          var zone = branchCfg.dangerZones[i];
+          if (x >= zone.startX && x <= zone.endX) {
+            if (zone.type === 'slippery') {
+              terrainType = 'icy';
+            } else if (zone.type === 'rockfall') {
+              terrainType = 'grassy';
+            } else if (zone.type === 'cliff') {
+              terrainType = 'sandy';
+            }
+            break;
+          }
+        }
+      }
+
+      if (branchCfg) {
+        if (branchCfg.id === 'risky' && terrainType === 'normal') {
+          terrainType = 'grassy';
+        } else if (branchCfg.id === 'shortcut' && terrainType === 'normal') {
+          terrainType = 'wet';
+        } else if (branchCfg.id === 'skyroad' && terrainType === 'normal') {
+          terrainType = 'icy';
+        }
+      }
+    }
+
+    return terrainType;
+  };
+
   proto.getVisibilityRange = function() {
     return this.currentVisibility;
   };
@@ -603,10 +655,15 @@
 
   proto.consumeWeatherDamage = function() {
     var config = WEATHER_TYPES[this.currentWeather];
-    if (config.damagePerSecond <= 0) return 0;
+    if (config.damagePerSecond <= 0) {
+      this.damageAccumulator = 0;
+      return 0;
+    }
 
     var damage = Math.floor(this.damageAccumulator);
-    this.damageAccumulator = 0;
+    if (damage > 0) {
+      this.damageAccumulator -= damage;
+    }
     return damage;
   };
 

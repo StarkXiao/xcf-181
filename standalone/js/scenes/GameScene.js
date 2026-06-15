@@ -84,6 +84,7 @@
 
     this.weatherSystem = new MountainRacer.WeatherSystem(this, this.level);
     this.weatherSystem.create();
+    this._currentTerrainType = 'normal';
 
     this.createHUD(width, height);
     this.createWeatherHUD(width, height);
@@ -310,11 +311,29 @@
       this.weatherNameText.setText(config.name);
     }
     if (this.weatherFrictionText) {
-      var friction = this.weatherSystem.currentFriction;
+      var friction = this.weatherSystem.getTerrainFriction(this._currentTerrainType || 'normal');
+      var terrainDisplay = '';
+      if (this._currentTerrainType === 'wet') {
+        terrainDisplay = '湿滑';
+      } else if (this._currentTerrainType === 'icy') {
+        terrainDisplay = '结冰';
+      } else if (this._currentTerrainType === 'sandy') {
+        terrainDisplay = '沙地';
+      } else if (this._currentTerrainType === 'grassy') {
+        terrainDisplay = '草地';
+      }
+
       if (friction < 0.99) {
         var pct = Math.round((1 - friction) * 100);
-        this.weatherFrictionText.setText('滑↓' + pct + '%');
+        var displayText = '滑↓' + pct + '%';
+        if (terrainDisplay) {
+          displayText = terrainDisplay + ' ' + displayText;
+        }
+        this.weatherFrictionText.setText(displayText);
         this.weatherFrictionText.setColor(friction < 0.5 ? '#ff5722' : '#ff9800');
+      } else if (terrainDisplay) {
+        this.weatherFrictionText.setText(terrainDisplay);
+        this.weatherFrictionText.setColor('#aaaaaa');
       } else {
         this.weatherFrictionText.setText('');
       }
@@ -2497,8 +2516,11 @@
     if (this.weatherSystem) {
       this.weatherSystem.update(carX, delta, this.carPhysics);
 
-      var weatherFriction = this.weatherSystem.currentFriction;
-      this.carPhysics.applyWeatherFriction(weatherFriction);
+      var branchId = this.terrain ? this.terrain.currentBranch : 'main';
+      var terrainType = this.weatherSystem.getTerrainTypeAt(carX, branchId, this.terrain);
+      var weatherTerrainFriction = this.weatherSystem.getTerrainFriction(terrainType);
+      this.carPhysics.applyWeatherFriction(weatherTerrainFriction);
+      this._currentTerrainType = terrainType;
 
       this.scoreManager.applyWeatherDifficulty(this.weatherSystem.getDifficultyModifier());
 
