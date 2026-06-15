@@ -329,30 +329,7 @@
 
     container.add([gfx, icon, label]);
 
-    if (tournamentState.hasClaimable) {
-      var badgeBg = this.add.graphics();
-      badgeBg.fillStyle(0xe94560, 1);
-      badgeBg.fillCircle(btnW / 2 - 10, -btnH / 2 + 10, 16);
-      badgeBg.lineStyle(2, 0xffffff, 1);
-      badgeBg.strokeCircle(btnW / 2 - 10, -btnH / 2 + 10, 16);
-      container.add(badgeBg);
-
-      var badgeText = this.add.text(btnW / 2 - 10, -btnH / 2 + 10, tournamentState.claimableCount > 99 ? '99+' : tournamentState.claimableCount, {
-        fontSize: '14px',
-        fontWeight: 'bold',
-        color: '#ffffff'
-      }).setOrigin(0.5);
-      container.add(badgeText);
-
-      this.tweens.add({
-        targets: [badgeBg, badgeText],
-        scale: 1.1,
-        duration: 600,
-        ease: 'Sine.easeInOut',
-        yoyo: true,
-        repeat: -1
-      });
-    } else if (tournamentState.activeCount > 0) {
+    if (tournamentState.activeCount > 0) {
       var activeBadge = this.add.graphics();
       activeBadge.fillStyle(0x4caf50, 1);
       activeBadge.fillCircle(btnW / 2 - 10, -btnH / 2 + 10, 14);
@@ -366,6 +343,13 @@
         color: '#ffffff'
       }).setOrigin(0.5);
       container.add(activeText);
+    } else if (tournamentState.availableCount > 0) {
+      var availBadge = this.add.graphics();
+      availBadge.fillStyle(0x009688, 1);
+      availBadge.fillCircle(btnW / 2 - 10, -btnH / 2 + 10, 12);
+      availBadge.lineStyle(2, 0xffffff, 1);
+      availBadge.strokeCircle(btnW / 2 - 10, -btnH / 2 + 10, 12);
+      container.add(availBadge);
     }
 
     var self = this;

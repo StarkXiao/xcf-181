@@ -2162,19 +2162,9 @@
         });
       }
 
-      if (this.tournamentRewards && !this.tournamentRewards.claimed) {
-        createBtn(startX + (btnW + gap) * 2, '🎁 领取奖励', 0xffd700, function() {
-          var claimResult = self.tournamentMgr.claimTournamentRewards(self.tournamentId);
-          if (claimResult.success) {
-            self.tournamentRewards.claimed = true;
-            self.scene.start('TournamentScene');
-          }
-        });
-      } else {
-        createBtn(startX + (btnW + gap) * 2, '📊 查看排行', 0x9c27b0, function() {
-          self.scene.start('TournamentScene');
-        });
-      }
+      createBtn(startX + (btnW + gap) * 2, '📊 返回赛事', 0x9c27b0, function() {
+        self.scene.start('TournamentScene');
+      });
     } else if (this.seasonMode) {
       createBtn(startX, '🏠 菜单', 0x9e9e9e, function() {
         if (self.seasonMode) {
@@ -2380,13 +2370,22 @@
         var rewardTier = rankBucket ?
           MountainRacer.TournamentConfig.getRewardForRank(tournamentType, rankBucket.rank) : null;
 
+        var grantedRewards = null;
+        if (archiveResult.claimableReward) {
+          var claimResult = this.tournamentMgr.claimTournamentRewards(this.tournamentId);
+          if (claimResult.success) {
+            grantedRewards = claimResult.rewards;
+          }
+        }
+
         this.tournamentRewards = {
           rank: archiveResult.rank ? archiveResult.rank.rank : null,
           percentile: archiveResult.rank ? archiveResult.rank.percentile : null,
           rankLabel: archiveResult.rankBucket ? archiveResult.rankBucket.label : null,
           rewardTier: rewardTier,
           earnedReward: archiveResult.claimableReward,
-          claimed: false
+          grantedRewards: grantedRewards,
+          autoGranted: !!grantedRewards
         };
       }
     }
@@ -2448,10 +2447,19 @@
           items.push({ icon: '🏅', text: '获得称号: ' + reward.title, highlight: true });
         }
 
-        if (this.tournamentRewards.claimed) {
-          items.push({ icon: '✅', text: '奖励已领取' });
-        } else {
-          items.push({ icon: '🎁', text: '点击下方「领取奖励」按钮领取!', highlight: true });
+        if (this.tournamentRewards.autoGranted && this.tournamentRewards.grantedRewards) {
+          var granted = this.tournamentRewards.grantedRewards;
+          var grantedItems = [];
+          if (granted.coins > 0) grantedItems.push('💰' + granted.coins);
+          if (granted.seasonXP > 0) grantedItems.push('⭐' + granted.seasonXP + 'XP');
+          if (granted.parts && granted.parts.length > 0) grantedItems.push('🔧x' + granted.parts.length);
+          if (granted.cars && granted.cars.length > 0) grantedItems.push('🚗x' + granted.cars.length);
+          if (granted.title) grantedItems.push('🏅' + granted.title);
+          if (grantedItems.length > 0) {
+            items.push({ icon: '✅', text: '奖励已自动发放: ' + grantedItems.join(' '), highlight: true });
+          } else {
+            items.push({ icon: '✅', text: '奖励已自动发放' });
+          }
         }
       }
     }

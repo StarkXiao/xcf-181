@@ -131,21 +131,6 @@
       color: '#ffd700'
     }).setOrigin(0.5);
     this.ticketContainer.add(ticketText);
-
-    var claimable = this.tournamentMgr.getClaimableRewards();
-    if (claimable.length > 0) {
-      var rewardBadge = this.add.graphics();
-      rewardBadge.fillStyle(0xe94560, 0.95);
-      rewardBadge.fillCircle(45, -15, 10);
-      this.ticketContainer.add(rewardBadge);
-
-      var badgeNum = this.add.text(45, -15, '' + claimable.length, {
-        fontSize: '11px',
-        fontWeight: 'bold',
-        color: '#ffffff'
-      }).setOrigin(0.5);
-      this.ticketContainer.add(badgeNum);
-    }
   };
 
   proto.createBackButton = function(x, y) {
@@ -192,7 +177,7 @@
     var tabs = [
       { id: 'available', label: '赛事列表', icon: '🏟️' },
       { id: 'my', label: '我的赛事', icon: '📋' },
-      { id: 'rewards', label: '领取奖励', icon: '🎁' },
+      { id: 'rewards', label: '奖励记录', icon: '🎁' },
       { id: 'history', label: '历史记录', icon: '📊' }
     ];
 
@@ -590,61 +575,86 @@
 
   proto.loadRewards = function() {
     var width = this.scale.width;
-    var claimable = this.tournamentMgr.getClaimableRewards();
+    var history = this.tournamentMgr.getTournamentHistory(20);
+    var grantedHistory = [];
 
-    if (claimable.length === 0) {
-      this.showEmptyMessage('暂无可领取奖励', '完成赛事后奖励将出现在这里');
+    for (var i = 0; i < history.length; i++) {
+      var entry = history[i];
+      if (entry.grantedRewards || entry.rewardsClaimed) {
+        grantedHistory.push(entry);
+      }
+    }
+
+    if (grantedHistory.length === 0) {
+      this.showEmptyMessage('暂无奖励记录', '完成赛事后奖励将自动发放并记录在这里');
       return;
     }
 
     var y = 10;
-    for (var i = 0; i < claimable.length; i++) {
-      var card = this.createRewardCard(width / 2, this.contentY + y, width - 40, claimable[i]);
-      y += 140;
+    for (var j = 0; j < grantedHistory.length; j++) {
+      var card = this.createRewardCard(width / 2, this.contentY + y, width - 40, grantedHistory[j]);
+      y += 130;
     }
   };
 
-  proto.createRewardCard = function(x, y, width, rewardInfo) {
+  proto.createRewardCard = function(x, y, width, rewardEntry) {
     var container = this.add.container(x, y - this.contentY);
-    container.setSize(width, 130);
+    container.setSize(width, 120);
 
     var bg = this.add.graphics();
     bg.fillStyle(0x3a1a4a, 0.85);
-    bg.fillRoundedRect(-width / 2, 0, width, 130, 12);
+    bg.fillRoundedRect(-width / 2, 0, width, 120, 12);
     bg.lineStyle(2, 0xff6bff, 0.7);
-    bg.strokeRoundedRect(-width / 2, 0, width, 130, 12);
+    bg.strokeRoundedRect(-width / 2, 0, width, 120, 12);
     container.add(bg);
 
-    var name = this.add.text(-width / 2 + 20, 12, '🏆 ' + (rewardInfo.tournamentName || ''), {
+    var name = this.add.text(-width / 2 + 20, 12, '🏆 ' + (rewardEntry.tournamentName || ''), {
       fontSize: '17px',
       fontWeight: 'bold',
       color: '#ffffff'
     });
     container.add(name);
 
+    var rankLabel = rewardEntry.rankBucket || '';
     var rankText = this.add.text(-width / 2 + 20, 38,
-      '排名: #' + (rewardInfo.rank || '-') + ' (' + (rewardInfo.rankBucket || '') + ')', {
+      '排名: #' + (rewardEntry.rank || '-') + (rankLabel ? ' (' + rankLabel + ')' : ''), {
       fontSize: '15px',
       color: '#ffd700'
     });
     container.add(rankText);
 
-    var reward = rewardInfo.eligibleReward || {};
+    var granted = rewardEntry.grantedRewards || {};
     var rewardParts = [];
-    if (reward.coins) rewardParts.push('💰 ' + reward.coins);
-    if (reward.seasonXP) rewardParts.push('⭐ ' + reward.seasonXP + 'XP');
-    if (reward.parts && reward.parts.length) rewardParts.push('🔧 x' + reward.parts.length);
-    if (reward.cars && reward.cars.length) rewardParts.push('🚗 x' + reward.cars.length);
-    if (reward.title) rewardParts.push('🏅 称号');
+    if (granted.coins > 0) rewardParts.push('💰 ' + granted.coins);
+    if (granted.seasonXP > 0) rewardParts.push('⭐ ' + granted.seasonXP + 'XP');
+    if (granted.parts && granted.parts.length) rewardParts.push('🔧 x' + granted.parts.length);
+    if (granted.cars && granted.cars.length) rewardParts.push('🚗 x' + granted.cars.length);
+    if (granted.title) rewardParts.push('🏅 ' + granted.title);
 
-    var rewardDesc = this.add.text(-width / 2 + 20, 62, rewardParts.join('  '), {
+    var rewardDesc = this.add.text(-width / 2 + 20, 62, rewardParts.length > 0 ?
+      rewardParts.join('  ') : '已自动发放', {
       fontSize: '13px',
       color: '#cccccc'
     });
     container.add(rewardDesc);
 
-    var claimBtn = this.createClaimButton(width / 2 - 55, 100, rewardInfo.tournamentId);
-    container.add(claimBtn);
+    var statusLabel = this.add.text(width / 2 - 15, 12, '✅ 已发放', {
+      fontSize: '12px',
+      fontWeight: 'bold',
+      color: '#4eff4e'
+    }).setOrigin(1, 0.5);
+    container.add(statusLabel);
+
+    if (rewardEntry.claimedAt) {
+      var date = new Date(rewardEntry.claimedAt);
+      var dateStr = (date.getMonth() + 1) + '/' + date.getDate() + ' ' +
+        date.getHours() + ':' + String(date.getMinutes()).padStart(2, '0');
+      var timeLabel = this.add.text(width / 2 - 15, 32, dateStr, {
+        fontSize: '11px',
+        color: '#888899'
+      }).setOrigin(1, 0.5);
+      container.add(timeLabel);
+    }
 
     this.contentArea.add(container);
     return container;
