@@ -1,10 +1,6 @@
 (function() {
   var MountainRacer = window.MountainRacer || {};
 
-  var STORAGE_KEY = 'mountain_racer_btn_layouts';
-  var ACTIVE_KEY = 'mountain_racer_btn_layout_active';
-  var SCENE_KEY = 'mountain_racer_btn_layout_scene';
-
   var DEFAULT_BUTTONS = {
     accelerate: { label: '▲', action: 'accelerate', color: 0xff6b35 },
     brake: { label: '▼', action: 'brake', color: 0x4a90d9 },
@@ -84,6 +80,9 @@
     this.canvasW = canvasW;
     this.canvasH = canvasH;
     this.baseBtnSize = 80;
+    this.dataManager = MountainRacer.DataManager.getInstance();
+    this.dataManager.init();
+    this.storage = new MountainRacer.ButtonLayoutStorage(this.dataManager);
     this.presets = {};
     this.activePresetName = null;
     this.currentLayout = null;
@@ -101,10 +100,9 @@
 
   proto._loadPresets = function() {
     try {
-      var saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        var data = JSON.parse(saved);
-        this.presets = data.presets || {};
+      var saved = this.storage.getAllPresets();
+      if (saved && Object.keys(saved).length > 0) {
+        this.presets = saved;
         this._migrateIfNeeded();
       } else {
         this.presets = defaultPresets(this.canvasW, this.canvasH);
@@ -115,7 +113,7 @@
     }
 
     try {
-      this.activePresetName = localStorage.getItem(ACTIVE_KEY) || '默认';
+      this.activePresetName = this.storage.getActivePreset() || '默认';
     } catch (e) {
       this.activePresetName = '默认';
     }
@@ -133,13 +131,13 @@
 
   proto._savePresets = function() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ presets: this.presets }));
+      this.storage.setAllPresets(this.presets);
     } catch (e) {}
   };
 
   proto._saveActivePreset = function() {
     try {
-      localStorage.setItem(ACTIVE_KEY, this.activePresetName || '默认');
+      this.storage.setActivePreset(this.activePresetName || '默认');
     } catch (e) {}
   };
 
@@ -285,7 +283,6 @@
 
   proto.saveScenePreset = function(sceneType) {
     try {
-      var key = SCENE_KEY + '_' + sceneType;
       var saveData = {
         activePresetName: this.activePresetName,
         layout: {}
@@ -305,17 +302,14 @@
         }
       }
       saveData.baseBtnSize = this.baseBtnSize;
-      localStorage.setItem(key, JSON.stringify(saveData));
+      this.storage.saveScenePreset(sceneType, saveData);
     } catch (e) {}
   };
 
   proto.loadScenePreset = function(sceneType) {
     try {
-      var key = SCENE_KEY + '_' + sceneType;
-      var saved = localStorage.getItem(key);
-      if (!saved) return false;
-
-      var data = JSON.parse(saved);
+      var data = this.storage.getScenePreset(sceneType);
+      if (!data) return false;
       if (!data.layout) return false;
 
       if (data.activePresetName && this.presets[data.activePresetName]) {
@@ -350,15 +344,7 @@
   };
 
   proto.hasScenePreset = function(sceneType) {
-    try {
-      var key = SCENE_KEY + '_' + sceneType;
-      var saved = localStorage.getItem(key);
-      if (saved) {
-        var data = JSON.parse(saved);
-        return data && data.layout && Object.keys(data.layout).length > 0;
-      }
-    } catch (e) {}
-    return false;
+    return this.storage.hasScenePreset(sceneType);
   };
 
   proto.getEffectiveButtonSize = function(action) {

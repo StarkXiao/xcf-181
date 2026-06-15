@@ -4,6 +4,11 @@
   MountainRacer.ScoreManager = function(scene, level) {
     this.scene = scene;
     this.level = level;
+    this.dataManager = MountainRacer.DataManager.getInstance();
+    this.dataManager.init();
+    this.highScoreMgr = this.dataManager.getHighScoreManager();
+    this.unlockMgr = this.dataManager.getUnlockManager();
+    this.settingsMgr = this.dataManager.getSettingsManager();
     this.score = 0;
     this.health = 100;
     this.maxHealth = 100;
@@ -86,13 +91,7 @@
 
     this.branchScoreBreakdown = {};
 
-    this.midGameSettings = {
-      difficulty: 'normal',
-      sfxEnabled: true,
-      controlMode: 'keyboard',
-      cameraShake: true,
-      showFPS: false
-    };
+    this.midGameSettings = this.settingsMgr.getMidGameSettings();
 
     this.runHistory = [];
     this.highScoreThresholds = [0.8, 0.9, 0.95, 1.0, 1.05, 1.1];
@@ -111,22 +110,12 @@
     };
 
     this.applyMidGameSettings = function(settings) {
-      var keys = Object.keys(settings || {});
-      for (var i = 0; i < keys.length; i++) {
-        if (this.midGameSettings.hasOwnProperty(keys[i])) {
-          this.midGameSettings[keys[i]] = settings[keys[i]];
-        }
-      }
+      this.settingsMgr.applyMidGameSettings(settings);
+      this.midGameSettings = this.settingsMgr.getMidGameSettings();
     };
 
     this.getMidGameSettings = function() {
-      return {
-        difficulty: this.midGameSettings.difficulty,
-        sfxEnabled: this.midGameSettings.sfxEnabled,
-        controlMode: this.midGameSettings.controlMode,
-        cameraShake: this.midGameSettings.cameraShake,
-        showFPS: this.midGameSettings.showFPS
-      };
+      return this.settingsMgr.getMidGameSettings();
     };
 
     this.updateSegmentScore = function(currentX) {
@@ -759,142 +748,59 @@
   };
 
   proto.getHighScore = function() {
-    try {
-      var key = 'mountain_racer_highscore_' + this.level;
-      var saved = localStorage.getItem(key);
-      return saved ? parseInt(saved, 10) : 0;
-    } catch (e) {
-      return 0;
-    }
+    return this.highScoreMgr.getHighScore(this.level);
   };
 
   proto.saveHighScore = function() {
-    try {
-      var key = 'mountain_racer_highscore_' + this.level;
-      var current = this.getHighScore();
-      if (this.score > current) {
-        localStorage.setItem(key, this.score.toString());
-      }
-
-      var unlockKey = 'mountain_racer_unlocked';
-      var unlocked = this.getUnlockedLevels();
-      if (this.isComplete && this.level < 3) {
-        unlocked.push(this.level + 1);
-        var unique = [];
-        for (var i = 0; i < unlocked.length; i++) {
-          if (unique.indexOf(unlocked[i]) === -1) {
-            unique.push(unlocked[i]);
-          }
-        }
-        localStorage.setItem(unlockKey, JSON.stringify(unique));
-      }
-    } catch (e) {}
+    this.highScoreMgr.setHighScore(this.level, this.score);
+    if (this.isComplete) {
+      this.unlockMgr.checkAndUnlockNextLevel(this.level, true);
+    }
   };
 
   proto.saveBranchProgress = function() {
-    try {
-      var key = 'mountain_racer_branches_' + this.level;
-      var saved = localStorage.getItem(key);
-      var data = saved ? JSON.parse(saved) : { unlockedBranches: [], bestScores: {} };
-
-      var uniqueBranches = Object.keys(this.branchDistances);
-      for (var i = 0; i < uniqueBranches.length; i++) {
-        if (data.unlockedBranches.indexOf(uniqueBranches[i]) === -1) {
-          data.unlockedBranches.push(uniqueBranches[i]);
-        }
-        if (!data.bestScores[uniqueBranches[i]] ||
-            this.score > data.bestScores[uniqueBranches[i]]) {
-          data.bestScores[uniqueBranches[i]] = this.score;
-        }
-      }
-
-      localStorage.setItem(key, JSON.stringify(data));
-    } catch (e) {}
+    this.unlockMgr.updateBranchesFromRun(this.level, this.branchDistances, this.score);
   };
 
   proto.getUnlockedBranches = function() {
-    try {
-      var key = 'mountain_racer_branches_' + this.level;
-      var saved = localStorage.getItem(key);
-      var data = saved ? JSON.parse(saved) : { unlockedBranches: ['main'] };
-      return data.unlockedBranches || ['main'];
-    } catch (e) {
-      return ['main'];
-    }
+    var data = this.unlockMgr.getUnlockedBranches(this.level);
+    return data.unlockedBranches;
   };
 
   proto.getUnlockedLevels = function() {
-    try {
-      var key = 'mountain_racer_unlocked';
-      var saved = localStorage.getItem(key);
-      var arr = saved ? JSON.parse(saved) : [1];
-      return Array.isArray(arr) ? arr : [1];
-    } catch (e) {
-      return [1];
-    }
+    return this.unlockMgr.getUnlockedLevels();
   };
 
   proto.loadPreviousBest = function() {
-    try {
-      var key = 'mountain_racer_best_stats_' + this.level;
-      var saved = localStorage.getItem(key);
-      if (saved) {
-        this.previousBestStats = JSON.parse(saved);
-      }
-    } catch (e) {}
+    this.previousBestStats = this.highScoreMgr.getBestStats(this.level);
   };
 
   proto.saveBestStats = function() {
-    try {
-      var key = 'mountain_racer_best_stats_' + this.level;
-      var current = this.getDetailedStats();
-      var previous = this.previousBestStats;
+    var current = this.getDetailedStats();
+    this.highScoreMgr.setBestStats(this.level, current);
 
-      if (!previous || current.totalScore > previous.totalScore) {
-        localStorage.setItem(key, JSON.stringify(current));
-      }
-
-      var historyKey = 'mountain_racer_run_history_' + this.level;
-      var history = [];
-      try {
-        var savedHistory = localStorage.getItem(historyKey);
-        if (savedHistory) {
-          history = JSON.parse(savedHistory);
-        }
-      } catch (e) {}
-
-      var runRecord = {
-        score: current.totalScore,
-        time: current.time,
-        distance: current.distance,
-        health: current.health,
-        perfectRun: current.perfectRun,
-        maxSpeed: current.maxSpeed,
-        maxCombo: current.comboInfo ? current.comboInfo.maxCombo : 0,
-        branches: Object.keys(current.branches || {}).length,
-        timestamp: Date.now(),
-        win: this.isComplete,
-        segmentScores: current.segmentScores || [],
-        bonusScores: current.bonusScores || {},
-        damageTaken: current.damageTaken || 0,
-        collectibleValue: current.collectibleValue || 0,
-        jumpCombo: current.jumpCombo || 0
-      };
-
-      history.unshift(runRecord);
-      if (history.length > 10) history = history.slice(0, 10);
-      localStorage.setItem(historyKey, JSON.stringify(history));
-    } catch (e) {}
+    var runRecord = {
+      score: current.totalScore,
+      time: current.time,
+      distance: current.distance,
+      health: current.health,
+      perfectRun: current.perfectRun,
+      maxSpeed: current.maxSpeed,
+      maxCombo: current.comboInfo ? current.comboInfo.maxCombo : 0,
+      branches: Object.keys(current.branches || {}).length,
+      timestamp: Date.now(),
+      win: this.isComplete,
+      segmentScores: current.segmentScores || [],
+      bonusScores: current.bonusScores || {},
+      damageTaken: current.damageTaken || 0,
+      collectibleValue: current.collectibleValue || 0,
+      jumpCombo: current.jumpCombo || 0
+    };
+    this.highScoreMgr.addRunRecord(this.level, runRecord);
   };
 
   proto.getRunHistory = function() {
-    try {
-      var key = 'mountain_racer_run_history_' + this.level;
-      var saved = localStorage.getItem(key);
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
-    }
+    return this.highScoreMgr.getRunHistory(this.level);
   };
 
   proto.calculateScoreImprovements = function() {
@@ -1141,36 +1047,13 @@
   };
 
   proto.getGameSettings = function() {
-    try {
-      var key = 'mountain_racer_settings';
-      var saved = localStorage.getItem(key);
-      return saved ? JSON.parse(saved) : {
-        soundEnabled: true,
-        musicEnabled: true,
-        vibrationEnabled: true,
-        difficulty: 'normal',
-        controlMode: 'touch',
-        showHints: true,
-        particleEffects: true
-      };
-    } catch (e) {
-      return {
-        soundEnabled: true,
-        musicEnabled: true,
-        vibrationEnabled: true,
-        difficulty: 'normal',
-        controlMode: 'touch',
-        showHints: true,
-        particleEffects: true
-      };
-    }
+    return this.settingsMgr.getAllSettings();
   };
 
   proto.saveGameSettings = function(settings) {
-    try {
-      var key = 'mountain_racer_settings';
-      localStorage.setItem(key, JSON.stringify(settings));
-    } catch (e) {}
+    if (settings) {
+      this.settingsMgr.batchSetSettings(settings);
+    }
   };
 
   proto.getStarConfig = function() {
@@ -1334,61 +1217,28 @@
   };
 
   proto.saveStarRating = function() {
-    try {
-      var key = 'mountain_racer_stars_' + this.level;
-      var saved = localStorage.getItem(key);
-      var currentBest = saved ? JSON.parse(saved) : { stars: 0, totalStars: 3 };
-
-      if (!this.starRating) {
-        this.calculateStarRating();
-      }
-
-      if (this.isComplete && this.starRating.stars > currentBest.stars) {
-        localStorage.setItem(key, JSON.stringify({
-          stars: this.starRating.stars,
-          totalStars: 3,
-          timestamp: Date.now(),
-          score: this.score,
-          time: this.getElapsedTime(),
-          health: this.health,
-          breakdown: this.starRating.breakdown
-        }));
-      }
-    } catch (e) {}
+    if (!this.starRating) {
+      this.calculateStarRating();
+    }
+    if (this.isComplete) {
+      this.highScoreMgr.setStarRating(this.level, {
+        stars: this.starRating.stars,
+        totalStars: 3,
+        score: this.score,
+        time: this.getElapsedTime(),
+        health: this.health,
+        breakdown: this.starRating.breakdown
+      });
+    }
   };
 
   proto.getSavedStarRating = function(level) {
-    try {
-      var lvl = level || this.level;
-      var key = 'mountain_racer_stars_' + lvl;
-      var saved = localStorage.getItem(key);
-      return saved ? JSON.parse(saved) : { stars: 0, totalStars: 3 };
-    } catch (e) {
-      return { stars: 0, totalStars: 3 };
-    }
+    var lvl = level || this.level;
+    return this.highScoreMgr.getStarRating(lvl);
   };
 
   proto.getChapterStarSummary = function() {
-    try {
-      var totalLevels = 3;
-      var result = {
-        totalStars: 0,
-        maxStars: totalLevels * 3,
-        levelStars: {},
-        completionPercent: 0
-      };
-
-      for (var lvl = 1; lvl <= totalLevels; lvl++) {
-        var saved = this.getSavedStarRating(lvl);
-        result.levelStars[lvl] = saved.stars || 0;
-        result.totalStars += saved.stars || 0;
-      }
-
-      result.completionPercent = Math.floor((result.totalStars / result.maxStars) * 100);
-      return result;
-    } catch (e) {
-      return { totalStars: 0, maxStars: 9, levelStars: {}, completionPercent: 0 };
-    }
+    return this.highScoreMgr.getChapterStarSummary(3);
   };
 
   proto.destroy = function() {};

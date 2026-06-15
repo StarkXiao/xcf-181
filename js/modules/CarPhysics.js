@@ -76,31 +76,37 @@
 
   MountainRacer.getUnlockedCars = function() {
     try {
-      var saved = localStorage.getItem('mountain_racer_unlocked_cars');
-      if (saved) {
-        return JSON.parse(saved);
-      }
+      var dm = MountainRacer.DataManager.getInstance();
+      dm.init();
+      return dm.getUnlockManager().getUnlockedCars();
     } catch (e) {}
     return ['default'];
   };
 
   MountainRacer.saveUnlockedCars = function(cars) {
     try {
-      localStorage.setItem('mountain_racer_unlocked_cars', JSON.stringify(cars));
+      var dm = MountainRacer.DataManager.getInstance();
+      dm.init();
+      if (Array.isArray(cars)) {
+        dm.setData('unlocks.cars', cars);
+      }
     } catch (e) {}
   };
 
   MountainRacer.getSelectedCar = function() {
     try {
-      var saved = localStorage.getItem('mountain_racer_selected_car');
-      if (saved) return saved;
+      var dm = MountainRacer.DataManager.getInstance();
+      dm.init();
+      return dm.getUnlockManager().getSelectedCar();
     } catch (e) {}
     return 'default';
   };
 
   MountainRacer.setSelectedCar = function(carId) {
     try {
-      localStorage.setItem('mountain_racer_selected_car', carId);
+      var dm = MountainRacer.DataManager.getInstance();
+      dm.init();
+      dm.getUnlockManager().setSelectedCar(carId);
     } catch (e) {}
   };
 
