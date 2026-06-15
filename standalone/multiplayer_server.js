@@ -70,7 +70,9 @@ class MultiplayerServer extends EventEmitter {
       raceEndTime: null,
       results: [],
       createdAt: Date.now(),
-      trackLength: options.trackLength || 5000
+      trackLength: options.trackLength || 5000,
+      raceId: null,
+      raceCount: 0
     };
 
     this.rooms.set(roomId, room);
@@ -180,8 +182,12 @@ class MultiplayerServer extends EventEmitter {
     }
 
     room.status = 'racing';
+    room.raceCount++;
     room.raceStartTime = Date.now();
+    room.raceEndTime = null;
     room.results = [];
+    room._leaderboardRecorded = false;
+    room.raceId = room.id + '_R' + room.raceCount + '_' + room.raceStartTime;
 
     let startX = 80;
     room.players.forEach((player) => {
@@ -198,7 +204,8 @@ class MultiplayerServer extends EventEmitter {
     this._broadcastToRoom(room, {
       type: 'race_start',
       timestamp: room.raceStartTime,
-      players: this._serializePlayers(room)
+      players: this._serializePlayers(room),
+      raceId: room.raceId
     });
 
     console.log(`[Race] Race started in room ${room.id}`);
@@ -266,7 +273,8 @@ class MultiplayerServer extends EventEmitter {
 
     this._broadcastToRoom(room, {
       type: 'race_end',
-      results: room.results
+      results: room.results,
+      raceId: room.raceId
     });
 
     console.log(`[Race] Race ended in room ${room.id}, results:`, room.results);
@@ -386,7 +394,8 @@ class MultiplayerServer extends EventEmitter {
             raceState: {
               status: room.status,
               startTime: room.raceStartTime,
-              elapsed: room.raceStartTime ? (Date.now() - room.raceStartTime) : 0
+              elapsed: room.raceStartTime ? (Date.now() - room.raceStartTime) : 0,
+              raceId: room.raceId
             }
           });
 
