@@ -232,10 +232,16 @@
         } else {
           var def = MountainRacer.PropConfig.getPropDef(propId);
           if (def && def.duration === 0) {
-            this.useProp(propId);
-            this.createPickupEffect(p, propId);
-            this.recordPickup(propId, p.x);
-            results.push({ propId: propId, rarity: rarity, instanceId: instanceId, autoUsed: true });
+            var autoResult = this.autoUseProp(propId);
+            if (autoResult.success) {
+              this.createPickupEffect(p, propId);
+              this.recordPickup(propId, p.x);
+              results.push({ propId: propId, rarity: rarity, instanceId: instanceId, autoUsed: true });
+            } else {
+              this.createPickupEffect(p, propId);
+              this.recordPickup(propId, p.x);
+              results.push({ propId: propId, rarity: rarity, instanceId: instanceId, autoUsed: false });
+            }
           } else {
             this.createPickupEffect(p, propId);
             this.recordPickup(propId, p.x);
@@ -316,7 +322,7 @@
     var effectResult = this.applyEffect(propId, def);
 
     this.stats.totalUsed++;
-    if (!this.stats.byType[propId]) this.stats.byType[propId] = { pickedUp: 0, used: 0, expired: 0 };
+    if (!this.stats.byType[propId]) this.stats.byType[propId] = { pickedUp: 0, used: 0, expired: 0, damageBlocked: 0, healthRestored: 0 };
     this.stats.byType[propId].used++;
     this.stats.useHistory.push({
       propId: propId,
@@ -333,6 +339,33 @@
     }
     var item = this.inventory[slotIndex];
     return this.useProp(item.propId);
+  };
+
+  proto.autoUseProp = function(propId) {
+    var def = MountainRacer.PropConfig.getPropDef(propId);
+    if (!def) return { success: false, reason: 'invalid_prop' };
+
+    if (this.cooldowns[propId] && Date.now() < this.cooldowns[propId]) {
+      return { success: false, reason: 'cooldown', remaining: this.cooldowns[propId] - Date.now() };
+    }
+
+    if (def.cooldown > 0) {
+      this.cooldowns[propId] = Date.now() + def.cooldown;
+    }
+
+    var effectResult = this.applyEffect(propId, def);
+
+    this.stats.totalUsed++;
+    if (!this.stats.byType[propId]) this.stats.byType[propId] = { pickedUp: 0, used: 0, expired: 0, damageBlocked: 0, healthRestored: 0 };
+    this.stats.byType[propId].used++;
+    this.stats.useHistory.push({
+      propId: propId,
+      timestamp: Date.now(),
+      effect: def.effect.type,
+      auto: true
+    });
+
+    return { success: true, propId: propId, effect: effectResult };
   };
 
   proto.applyEffect = function(propId, def) {
@@ -355,6 +388,10 @@
         this.scene.scoreManager.health + healAmount
       );
       this.stats.healthRestored += healAmount;
+      if (!this.stats.byType[propId]) {
+        this.stats.byType[propId] = { pickedUp: 0, used: 0, expired: 0, damageBlocked: 0, healthRestored: 0 };
+      }
+      this.stats.byType[propId].healthRestored = (this.stats.byType[propId].healthRestored || 0) + healAmount;
       return { type: 'heal', amount: healAmount };
     }
 
@@ -366,6 +403,9 @@
 
     if (effect.type === 'scoreMultiply') {
       this.propScoreMultiplier = effect.scoreMultiplier;
+    }
+
+    if (effect.type === 'timeSlow') {
     }
 
     this.activeEffects.push(activeEffect);
@@ -397,6 +437,13 @@
       if (ae.type === 'shield' && ae.blocksRemaining > 0) {
         ae.blocksRemaining--;
         this.stats.damageBlocked += remainingDamage;
+
+        var propId = ae.propId;
+        if (!this.stats.byType[propId]) {
+          this.stats.byType[propId] = { pickedUp: 0, used: 0, expired: 0, damageBlocked: 0, healthRestored: 0 };
+        }
+        this.stats.byType[propId].damageBlocked = (this.stats.byType[propId].damageBlocked || 0) + remainingDamage;
+
         remainingDamage = 0;
 
         if (ae.blocksRemaining <= 0) {
@@ -443,7 +490,7 @@
 
     this.stats.totalExpired++;
     var propId = ae.propId;
-    if (!this.stats.byType[propId]) this.stats.byType[propId] = { pickedUp: 0, used: 0, expired: 0 };
+    if (!this.stats.byType[propId]) this.stats.byType[propId] = { pickedUp: 0, used: 0, expired: 0, damageBlocked: 0, healthRestored: 0 };
     this.stats.byType[propId].expired++;
 
     this.activeEffects.splice(index, 1);
@@ -453,9 +500,20 @@
     return this.propScoreMultiplier;
   };
 
+  proto.getTimeSlowFactor = function() {
+    var factor = 1.0;
+    for (var i = 0; i < this.activeEffects.length; i++) {
+      var eff = this.activeEffects[i];
+      if (eff.type === 'timeSlow' && eff.config.timeScale) {
+        factor = Math.min(factor, eff.config.timeScale);
+      }
+    }
+    return factor;
+  };
+
   proto.recordPickup = function(propId, position) {
     this.stats.totalPickedUp++;
-    if (!this.stats.byType[propId]) this.stats.byType[propId] = { pickedUp: 0, used: 0, expired: 0 };
+    if (!this.stats.byType[propId]) this.stats.byType[propId] = { pickedUp: 0, used: 0, expired: 0, damageBlocked: 0, healthRestored: 0 };
     this.stats.byType[propId].pickedUp++;
     this.stats.pickUpHistory.push({
       propId: propId,
@@ -524,7 +582,9 @@
         color: def ? def.colorStr : '#999999',
         pickedUp: this.stats.byType[key].pickedUp,
         used: this.stats.byType[key].used,
-        expired: this.stats.byType[key].expired
+        expired: this.stats.byType[key].expired,
+        damageBlocked: this.stats.byType[key].damageBlocked || 0,
+        healthRestored: this.stats.byType[key].healthRestored || 0
       });
     }
 

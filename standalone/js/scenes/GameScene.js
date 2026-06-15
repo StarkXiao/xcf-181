@@ -2298,7 +2298,10 @@
       }
     }
 
-    var dangerResult = this.dangerZones.update(carX, this.carPhysics, delta, Date.now());
+    var timeSlowFactor = this.propSystem ? this.propSystem.getTimeSlowFactor() : 1.0;
+    var scaledDelta = delta * timeSlowFactor;
+
+    var dangerResult = this.dangerZones.update(carX, this.carPhysics, scaledDelta, Date.now(), timeSlowFactor);
     if (dangerResult.damage > 0) {
       var dangerDmg = dangerResult.damage;
       if (this.propSystem) {

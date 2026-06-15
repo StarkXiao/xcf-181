@@ -120,9 +120,10 @@
     this.renderZones();
   };
 
-  proto.update = function(carX, carPhysics, delta, now) {
+  proto.update = function(carX, carPhysics, delta, now, timeScale) {
     var zone = this.terrain.isInDangerZone(carX, this.currentBranch);
     var result = { damage: 0, slowdown: 1, message: null };
+    var ts = timeScale !== undefined ? timeScale : 1.0;
 
     if (!zone) {
       this.activeEffects = {};
@@ -134,7 +135,8 @@
         if (now >= this.nextDamageTime) {
           result.damage = zone.damage || 15;
           result.message = '💥 落石袭击!';
-          this.nextDamageTime = now + 800 + Math.random() * 1200;
+          var baseInterval = 800 + Math.random() * 1200;
+          this.nextDamageTime = now + Math.floor(baseInterval / ts);
           this.createRockfallEffect(carX, this.terrain.getHeight(carX));
         }
         break;
@@ -151,7 +153,7 @@
         if (Math.random() < (zone.fallChance || 0.2) * (delta / 1000) * 10) {
           result.damage = zone.damage || 20;
           result.message = '⚠️ 差点坠落!';
-          this.nextDamageTime = now + 1500;
+          this.nextDamageTime = now + Math.floor(1500 / ts);
         }
         if (!this.activeEffects.cliff) {
           this.activeEffects.cliff = true;

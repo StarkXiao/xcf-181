@@ -2079,8 +2079,8 @@
     var ps = this.propStats;
     if (!ps || ps.totalPickedUp === 0) return;
 
-    var panelW = 380;
-    var panelH = 40 + 32 + ps.byType.length * 38 + 80;
+    var panelW = 400;
+    var panelH = 40 + 32 + ps.byType.length * 48 + 80;
     var panelX = width / 2 - panelW / 2;
     var baseY = height / 2 + 130;
 
@@ -2142,44 +2142,61 @@
 
     for (var d = 0; d < ps.byType.length; d++) {
       var item = ps.byType[d];
-      var rowY = detailY + d * 38;
+      var rowY = detailY + d * 48;
 
       var rowBg = this.add.graphics();
       rowBg.fillStyle(d % 2 === 0 ? 0x222238 : 0x1e1e32, 1);
-      rowBg.fillRoundedRect(panelX + 10, rowY - 14, panelW - 20, 34, 6);
+      rowBg.fillRoundedRect(panelX + 10, rowY - 18, panelW - 20, 44, 6);
       rowBg.setScrollFactor(0);
       rowBg.setDepth(100);
 
-      var itemIcon = this.add.text(detailLeftX + 8, rowY, item.icon, {
-        fontSize: '16px'
+      var itemIcon = this.add.text(detailLeftX + 8, rowY - 5, item.icon, {
+        fontSize: '18px'
       }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
 
-      var itemName = this.add.text(detailLeftX + 32, rowY - 5, item.name, {
+      var itemName = this.add.text(detailLeftX + 36, rowY - 10, item.name, {
         fontSize: '12px',
         fontWeight: 'bold',
         color: item.color
       }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
 
-      var rarityLabel = this.add.text(detailLeftX + 32, rowY + 9, item.rarity, {
+      var rarityColor = MountainRacer.PropConfig.getRarityColor(item.rarity);
+      var rarityNames = { common: '普通', uncommon: '优秀', rare: '稀有', epic: '史诗', legendary: '传说' };
+      var rarityLabel = this.add.text(detailLeftX + 36, rowY + 10, '● ' + (rarityNames[item.rarity] || '普通'), {
         fontSize: '9px',
-        color: '#888888'
+        color: rarityColor.str
       }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
 
-      var statX = panelX + panelW - 25;
-      var pickupText = this.add.text(statX - 80, rowY, '📦' + item.pickedUp, {
-        fontSize: '11px',
+      var statX = panelX + panelW - 15;
+
+      var pickupText = this.add.text(statX - 100, rowY - 10, '📦 ' + item.pickedUp, {
+        fontSize: '10px',
         color: '#cccccc'
-      }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
+      }).setOrigin(1, 0.5).setScrollFactor(0).setDepth(101);
 
-      var usedText = this.add.text(statX - 35, rowY, '🎯' + item.used, {
-        fontSize: '11px',
+      var usedText = this.add.text(statX - 40, rowY - 10, '🎯 ' + item.used, {
+        fontSize: '10px',
         color: '#4caf50'
-      }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
+      }).setOrigin(1, 0.5).setScrollFactor(0).setDepth(101);
 
-      var expiredText = this.add.text(statX, rowY, '⏳' + item.expired, {
-        fontSize: '11px',
+      var expiredText = this.add.text(statX, rowY - 10, '⏳ ' + item.expired, {
+        fontSize: '10px',
         color: '#ff9800'
-      }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
+      }).setOrigin(1, 0.5).setScrollFactor(0).setDepth(101);
+
+      if (item.damageBlocked > 0) {
+        var blockText = this.add.text(statX - 60, rowY + 10, '🛡️ -' + item.damageBlocked, {
+          fontSize: '9px',
+          color: '#4caf50'
+        }).setOrigin(1, 0.5).setScrollFactor(0).setDepth(101);
+      }
+
+      if (item.healthRestored > 0) {
+        var healText = this.add.text(statX, rowY + 10, '💚 +' + item.healthRestored, {
+          fontSize: '9px',
+          color: '#e91e63'
+        }).setOrigin(1, 0.5).setScrollFactor(0).setDepth(101);
+      }
     }
   };
 
