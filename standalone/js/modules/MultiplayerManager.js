@@ -16,6 +16,7 @@
     this._raceState = 'idle';
     this._raceStartTime = null;
     this._raceResults = null;
+    this._currentRaceId = null;
     this._positionUpdateTimer = null;
     this._lastPositionSend = 0;
     this._eventListeners = {};
@@ -166,6 +167,7 @@
       case 'left_room':
         this._currentRoom = null;
         this._otherPlayers = {};
+        this._currentRaceId = null;
         this._clearReconnectToken();
         this._emit('leftRoom');
         break;
@@ -174,8 +176,9 @@
         this._raceState = 'racing';
         this._raceStartTime = msg.timestamp;
         this._raceResults = null;
+        this._currentRaceId = msg.raceId || null;
         this._updateOtherPlayers(msg.players);
-        this._emit('raceStart', { timestamp: msg.timestamp, players: msg.players });
+        this._emit('raceStart', { timestamp: msg.timestamp, players: msg.players, raceId: msg.raceId });
         break;
 
       case 'positions_update':
@@ -191,8 +194,9 @@
       case 'race_end':
         this._raceState = 'finished';
         this._raceResults = msg.results;
+        this._currentRaceId = msg.raceId || this._currentRaceId;
         this._clearReconnectToken();
-        this._emit('raceEnd', msg.results);
+        this._emit('raceEnd', { results: msg.results, raceId: msg.raceId });
         break;
 
       case 'player_disconnected':
@@ -214,6 +218,7 @@
         this._localPlayerId = msg.player.id;
         this._raceState = msg.raceState.status;
         this._raceStartTime = msg.raceState.startTime;
+        this._currentRaceId = msg.raceState.raceId || null;
         this._updateOtherPlayers(msg.room.players);
         this._saveReconnectToken(null);
         this._emit('reconnectSuccess', {
@@ -334,6 +339,10 @@
 
   proto.getRaceResults = function() {
     return this._raceResults;
+  };
+
+  proto.getCurrentRaceId = function() {
+    return this._currentRaceId;
   };
 
   proto.isHost = function() {

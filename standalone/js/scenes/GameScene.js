@@ -3981,6 +3981,7 @@
     this.mpMyRank = 0;
     this.mpFinished = false;
     this.mpResultRecorded = false;
+    this.mpCurrentRaceId = this.mpManager.getCurrentRaceId();
 
     var self = this;
 
@@ -3988,8 +3989,14 @@
       self.updateOtherPlayers(positions);
     });
 
-    this.mpManager.on('raceEnd', function(results) {
-      self._handleRaceEnd(results);
+    this.mpManager.on('raceStart', function(data) {
+      self.mpCurrentRaceId = data.raceId || null;
+      self.mpResultRecorded = false;
+      self.mpFinished = false;
+    });
+
+    this.mpManager.on('raceEnd', function(data) {
+      self._handleRaceEnd(data);
     });
 
     this.mpManager.on('playerFinished', function(data) {
@@ -4186,11 +4193,12 @@
     });
   };
 
-  proto._handleRaceEnd = function(results) {
+  proto._handleRaceEnd = function(data) {
     if (this.mpResultRecorded) return;
     this.mpFinished = true;
     this.gameOver = true;
-    this._showMultiplayerResultOnce(results);
+    this.mpCurrentRaceId = data.raceId || null;
+    this._showMultiplayerResultOnce(data.results);
   };
 
   proto._showMultiplayerResultOnce = function(results) {
@@ -4220,7 +4228,8 @@
       myRank = myResult.rank;
     }
 
-    var raceId = this.multiplayerRoom ? this.multiplayerRoom.id : null;
+    var raceId = this.mpCurrentRaceId || this.mpManager.getCurrentRaceId() ||
+      (this.multiplayerRoom ? this.multiplayerRoom.id : null);
     this.mpLeaderboard.recordRaceResult(this.level, myRank, myResult.time, raceId);
 
     this.time.delayedCall(500, function() {

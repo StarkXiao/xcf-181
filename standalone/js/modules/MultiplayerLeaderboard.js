@@ -139,11 +139,11 @@
   };
 
   proto.recordRaceResult = function(track, rank, time, raceId) {
-    var dedupeKey = raceId || (track + '_' + rank + '_' + time + '_' + Date.now());
+    var dedupeKey = raceId ? ('race_' + raceId) : ('fallback_' + track + '_' + rank + '_' + time);
     if (this._recordedRaceIds[dedupeKey]) {
       return this.getStats();
     }
-    this._recordedRaceIds[dedupeKey] = true;
+    this._recordedRaceIds[dedupeKey] = Date.now();
     this._saveRecordedRaceIds();
 
     var stats = this.getStats();

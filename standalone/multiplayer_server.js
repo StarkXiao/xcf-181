@@ -247,7 +247,8 @@ class MultiplayerServer extends EventEmitter {
       this._sendToClient(client, {
         type: 'player_finished',
         rank: player.rank,
-        time: player.finishTime
+        time: player.finishTime,
+        raceId: room.raceId
       });
 
       const finishedCount = room.results.length;
