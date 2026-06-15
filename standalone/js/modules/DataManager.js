@@ -124,6 +124,28 @@
       completedDailyTasks: 0,
       completedAchievements: 0,
       pendingRewards: []
+    },
+    tournament: {
+      tickets: 5,
+      lastTicketRegen: 0,
+      lastFreeTicketDay: null,
+      registrations: {},
+      activeTournament: null,
+      tournamentHistory: {},
+      instances: {},
+      earnedTitles: [],
+      scheduleState: {
+        lastDailyGenerated: null,
+        lastWeeklyGenerated: null,
+        generatedTournaments: []
+      },
+      stats: {
+        totalParticipations: 0,
+        totalWins: 0,
+        bestRank: null,
+        totalCoinsEarned: 0,
+        totalTicketsSpent: 0
+      }
     }
   };
 
@@ -191,6 +213,7 @@
       this._rewardSystem = null;
       this._carGrowthSystem = null;
       this._taskCenterManager = null;
+      this._tournamentManager = null;
       this._initialized = true;
         this._emit('initialized', { version: this._data._version });
         return true;
@@ -537,6 +560,14 @@
         this._taskCenterManager = new MountainRacer.TaskCenterManager(this);
       }
       return this._taskCenterManager;
+    };
+
+    proto.getTournamentManager = function() {
+      if (!this._initialized) this.init();
+      if (!this._tournamentManager) {
+        this._tournamentManager = new MountainRacer.TournamentManager(this);
+      }
+      return this._tournamentManager;
     };
 
     proto.on = function(event, callback) {
