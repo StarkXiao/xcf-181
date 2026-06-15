@@ -17,6 +17,8 @@
     this.unlockMgr = this.dataManager.getUnlockManager();
     this.seasonMode = !!(data && data.seasonMode);
     this.tournamentMode = !!(data && data.tournamentMode);
+    this.multiplayerMode = !!(data && data.multiplayerMode);
+    this.multiplayerRoom = data && data.multiplayerRoom ? data.multiplayerRoom : null;
     this.tournamentId = data && data.tournamentId ? data.tournamentId : null;
     this.chapterId = data && data.chapterId ? data.chapterId : null;
     this.nodeId = data && data.nodeId ? data.nodeId : null;
@@ -91,6 +93,10 @@
     this.createPropHUD(width, height);
     this.createPauseButton(width);
     this.createBranchMinimap(width, height);
+
+    if (this.multiplayerMode) {
+      this.initMultiplayer();
+    }
 
     this.cameras.main.setBounds(0, 0, this.terrain.config.length + 200, 600);
     this.cameras.main.startFollow(this.carPhysics.car, true, 0.1, 0.1, -100, 100);
@@ -2578,6 +2584,10 @@
     }
 
     this.updateHUD();
+
+    if (this.multiplayerMode && this.mpManager) {
+      this.updateMultiplayer(delta);
+    }
   };
 
   proto.checkBranchPoint = function(carX) {
@@ -3534,6 +3544,10 @@
     this.checkUpcomingMerge(this.carPhysics.car.x);
     this.updateMinimap(this.carPhysics.car.x);
     this.updatePropHUD();
+
+    if (this.multiplayerMode && this.mpManager) {
+      this.updateMultiplayerHUD();
+    }
   };
 
   proto.checkDangerWarning = function(carX) {
@@ -3922,6 +3936,11 @@
       console.warn('[GameScene] recordRaceComplete error:', e);
     }
 
+    if (this.multiplayerMode) {
+      this.handleMultiplayerGameEnd(win, detailedStats);
+      return;
+    }
+
     this.time.delayedCall(600, function() {
       var propStats = self.propSystem ? self.propSystem.getSettlementStats() : null;
       self.scene.start('GameOverScene', {
@@ -3948,6 +3967,258 @@
         tournamentId: self.tournamentId,
         tournamentSubmitResult: tournamentSubmitResult,
         propStats: propStats
+      });
+    });
+  };
+
+  proto.initMultiplayer = function() {
+    this.mpManager = this.dataManager.getMultiplayerManager();
+    this.mpLeaderboard = this.dataManager.getMultiplayerLeaderboard();
+    this.otherPlayerSprites = {};
+    this.otherPlayerNames = {};
+    this.mpRaceStartTime = null;
+    this.mpMyFinishTime = null;
+    this.mpMyRank = 0;
+    this.mpFinished = false;
+
+    var self = this;
+
+    this.mpManager.on('positionsUpdate', function(positions) {
+      self.updateOtherPlayers(positions);
+    });
+
+    this.mpManager.on('raceEnd', function(results) {
+      if (!self.mpFinished) {
+        self.mpFinished = true;
+        self.gameOver = true;
+        self.showMultiplayerResult(results);
+      }
+    });
+
+    this.mpManager.on('playerFinished', function(data) {
+      if (data.rank === 1) {
+        self.showFloatingText(self.carPhysics.car.x, self.carPhysics.car.y - 80, '有人完成了!', 0xff9800);
+      }
+    });
+
+    this.mpManager.on('playerDisconnected', function(playerId) {
+      if (self.otherPlayerSprites[playerId]) {
+        self.otherPlayerSprites[playerId].setAlpha(0.3);
+      }
+    });
+
+    this.mpManager.on('playerReconnected', function(data) {
+      if (self.otherPlayerSprites[data.playerId]) {
+        self.otherPlayerSprites[data.playerId].setAlpha(1);
+      }
+    });
+
+    this.createOtherPlayers();
+    this.createMultiplayerHUD();
+  };
+
+  proto.createOtherPlayers = function() {
+    if (!this.multiplayerRoom || !this.multiplayerRoom.players) return;
+
+    var players = this.multiplayerRoom.players;
+    var localPlayerId = this.mpManager.getLocalPlayerId();
+
+    for (var i = 0; i < players.length; i++) {
+      var player = players[i];
+      if (player.id === localPlayerId) continue;
+
+      this.createOtherPlayerSprite(player);
+    }
+  };
+
+  proto.createOtherPlayerSprite = function(player) {
+    var carColor = player.carColor || '#1e90ff';
+    var colorNum = parseInt(carColor.replace('#', ''), 16);
+
+    var car = this.add.graphics();
+    car.fillStyle(colorNum, 1);
+    car.fillRoundedRect(-20, -12, 40, 24, 6);
+    car.lineStyle(2, 0x000000, 0.5);
+    car.strokeRoundedRect(-20, -12, 40, 24, 6);
+
+    car.fillStyle(0x87ceeb, 0.8);
+    car.fillRoundedRect(-8, -8, 16, 14, 3);
+
+    car.x = player.position ? player.position.x : 100;
+    car.y = player.position ? player.position.y : 300;
+    car.rotation = player.position ? player.position.rotation : 0;
+    car.setDepth(50);
+
+    this.otherPlayerSprites[player.id] = car;
+
+    var nameTxt = this.add.text(car.x, car.y - 30, player.name, {
+      fontSize: '12px',
+      fontWeight: 'bold',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2
+    }).setOrigin(0.5).setDepth(51);
+
+    this.otherPlayerNames[player.id] = nameTxt;
+  };
+
+  proto.updateMultiplayer = function(delta) {
+    if (!this.mpManager || !this.carPhysics) return;
+
+    var car = this.carPhysics.car;
+    this.mpManager.sendPosition({
+      x: car.x,
+      y: car.y,
+      rotation: car.rotation,
+      vx: this.carPhysics.vx || 0,
+      vy: this.carPhysics.vy || 0
+    });
+
+    this.mpManager.updateRemotePlayers(delta);
+
+    var otherPlayers = this.mpManager.getOtherPlayers();
+    for (var id in otherPlayers) {
+      if (!otherPlayers.hasOwnProperty(id)) continue;
+      var player = otherPlayers[id];
+
+      if (this.otherPlayerSprites[id]) {
+        var sprite = this.otherPlayerSprites[id];
+        sprite.x = player.x;
+        sprite.y = player.y;
+        sprite.rotation = player.rotation;
+
+        if (this.otherPlayerNames[id]) {
+          this.otherPlayerNames[id].x = player.x;
+          this.otherPlayerNames[id].y = player.y - 30;
+        }
+      } else {
+        this.createOtherPlayerSprite({
+          id: id,
+          name: player.name,
+          carColor: player.carColor,
+          position: { x: player.x, y: player.y, rotation: player.rotation }
+        });
+      }
+    }
+  };
+
+  proto.createMultiplayerHUD = function() {
+    var width = this.scale.width;
+    var height = this.scale.height;
+
+    this.mpPositionHUD = this.add.graphics();
+    this.mpPositionHUD.fillStyle(0x000000, 0.6);
+    this.mpPositionHUD.fillRoundedRect(width - 130, 80, 120, 100, 8);
+    this.mpPositionHUD.lineStyle(2, 0xffd700, 0.6);
+    this.mpPositionHUD.strokeRoundedRect(width - 130, 80, 120, 100, 8);
+    this.mpPositionHUD.setScrollFactor(0);
+    this.mpPositionHUD.setDepth(200);
+
+    this.mpPositionTitle = this.add.text(width - 70, 95, '🏁 实时排名', {
+      fontSize: '12px',
+      fontWeight: 'bold',
+      color: '#ffd700'
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(201);
+
+    this.mpPositionList = [];
+    for (var i = 0; i < 4; i++) {
+      var txt = this.add.text(width - 120, 115 + i * 20, '', {
+        fontSize: '11px',
+        color: '#ffffff'
+      }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(201);
+      this.mpPositionList.push(txt);
+    }
+  };
+
+  proto.updateMultiplayerHUD = function() {
+    if (!this.mpPositionList || !this.mpManager) return;
+
+    var allPlayers = [];
+    var localPlayerId = this.mpManager.getLocalPlayerId();
+
+    allPlayers.push({
+      id: localPlayerId,
+      name: '你',
+      progress: this.carPhysics ? (this.carPhysics.car.x / this.terrain.config.length) : 0,
+      isLocal: true
+    });
+
+    var otherPlayers = this.mpManager.getOtherPlayers();
+    for (var id in otherPlayers) {
+      if (!otherPlayers.hasOwnProperty(id)) continue;
+      allPlayers.push({
+        id: id,
+        name: otherPlayers[id].name,
+        progress: otherPlayers[id].progress,
+        isLocal: false
+      });
+    }
+
+    allPlayers.sort(function(a, b) { return b.progress - a.progress; });
+
+    for (var i = 0; i < this.mpPositionList.length; i++) {
+      if (i < allPlayers.length) {
+        var p = allPlayers[i];
+        var rank = i + 1;
+        var rankIcon = rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : rank + '.';
+        var color = p.isLocal ? '#4caf50' : '#ffffff';
+        this.mpPositionList[i].setText(rankIcon + ' ' + p.name);
+        this.mpPositionList[i].setColor(color);
+        this.mpPositionList[i].setVisible(true);
+      } else {
+        this.mpPositionList[i].setVisible(false);
+      }
+    }
+  };
+
+  proto.handleMultiplayerGameEnd = function(win, stats) {
+    var self = this;
+    this.mpFinished = true;
+
+    if (win) {
+      this.mpMyFinishTime = this.scoreManager.getElapsedTime();
+    }
+
+    this.time.delayedCall(1000, function() {
+      var results = self.mpManager.getRaceResults();
+      if (results && results.length > 0) {
+        self.showMultiplayerResult(results);
+      }
+    });
+  };
+
+  proto.showMultiplayerResult = function(results) {
+    var self = this;
+    var localPlayerId = this.mpManager.getLocalPlayerId();
+    var myResult = null;
+    var myRank = 0;
+
+    for (var i = 0; i < results.length; i++) {
+      if (results[i].playerId === localPlayerId) {
+        myResult = results[i];
+        myRank = results[i].rank;
+        break;
+      }
+    }
+
+    if (!myResult) {
+      myResult = {
+        playerId: localPlayerId,
+        playerName: '你',
+        rank: results.length + 1,
+        time: this.scoreManager.getElapsedTime()
+      };
+      myRank = myResult.rank;
+    }
+
+    this.mpLeaderboard.recordRaceResult(this.level, myRank, myResult.time);
+
+    this.time.delayedCall(500, function() {
+      self.scene.start('MultiplayerResultScene', {
+        results: results,
+        myTime: myResult.time,
+        myRank: myRank,
+        track: self.level
       });
     });
   };

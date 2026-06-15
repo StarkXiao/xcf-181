@@ -61,6 +61,9 @@
         MountainRacer.TournamentScene,
         MountainRacer.PlayerProfileScene,
         MountainRacer.ShopScene,
+        MountainRacer.MultiplayerLobbyScene,
+        MountainRacer.MultiplayerRoomScene,
+        MountainRacer.MultiplayerResultScene,
         MountainRacer.GameScene,
         MountainRacer.GameOverScene
       ],

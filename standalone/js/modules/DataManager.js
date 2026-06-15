@@ -228,6 +228,8 @@
       this._tournamentManager = null;
       this._playerProfileManager = null;
       this._shopManager = null;
+      this._multiplayerManager = null;
+      this._multiplayerLeaderboard = null;
       this._initialized = true;
         this._emit('initialized', { version: this._data._version });
         return true;
@@ -598,6 +600,25 @@
         this._shopManager = new MountainRacer.ShopManager(this);
       }
       return this._shopManager;
+    };
+
+    proto.getMultiplayerManager = function() {
+      if (!this._initialized) this.init();
+      if (!this._multiplayerManager) {
+        this._multiplayerManager = new MountainRacer.MultiplayerManager(this);
+      }
+      return this._multiplayerManager;
+    };
+
+    proto.getMultiplayerLeaderboard = function() {
+      if (!this._initialized) this.init();
+      if (!this._multiplayerLeaderboard) {
+        this._multiplayerLeaderboard = new MountainRacer.MultiplayerLeaderboard(
+          this.getMultiplayerManager(),
+          this
+        );
+      }
+      return this._multiplayerLeaderboard;
     };
 
     proto.on = function(event, callback) {

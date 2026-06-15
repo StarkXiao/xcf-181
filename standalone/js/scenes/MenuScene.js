@@ -36,6 +36,7 @@
     this.createInstructions(width, height);
     this.createControlsHint(width, height);
     this.createGarageButton(width, height);
+    this.createMultiplayerButton(width, height);
   };
 
   proto.createBackground = function(width, height) {
@@ -544,6 +545,66 @@
     });
 
     this.shopButton = container;
+  };
+
+  proto.createMultiplayerButton = function(width, height) {
+    var btnX = width / 2;
+    var btnY = 320;
+    var btnW = 220;
+    var btnH = 55;
+
+    var container = this.add.container(btnX, btnY);
+    container.setSize(btnW, btnH);
+
+    var gfx = this.add.graphics();
+    gfx.fillStyle(0xe91e63, 0.95);
+    gfx.fillRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 14);
+    gfx.lineGradientStyle(3, 0xf06292, 0xf06292, 0xad1457, 0xad1457, 1);
+    gfx.strokeRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 14);
+
+    var icon = this.add.text(-btnW / 2 + 20, 0, '🏁', {
+      fontSize: '28px'
+    }).setOrigin(0, 0.5);
+
+    var label = this.add.text(15, -8, '多人竞速', {
+      fontSize: '18px',
+      fontWeight: 'bold',
+      color: '#ffffff',
+      stroke: '#880e4f',
+      strokeThickness: 2
+    }).setOrigin(0, 0.5);
+
+    var hint = this.add.text(15, 12, '实时对战', {
+      fontSize: '11px',
+      color: '#f8bbd0'
+    }).setOrigin(0, 0.5);
+
+    container.add([gfx, icon, label, hint]);
+
+    var self = this;
+    container.setInteractive(
+      new Phaser.Geom.Rectangle(-btnW / 2, -btnH / 2, btnW, btnH),
+      Phaser.Geom.Rectangle.Contains
+    );
+    container.on('pointerover', function() {
+      self.tweens.add({ targets: this, scale: 1.06, duration: 150, ease: 'Power2' });
+    });
+    container.on('pointerout', function() {
+      self.tweens.add({ targets: this, scale: 1.0, duration: 150, ease: 'Power2' });
+    });
+    container.on('pointerdown', function() {
+      self.tweens.add({
+        targets: this,
+        scale: 0.95,
+        duration: 80,
+        yoyo: true,
+        onComplete: function() {
+          self.scene.start('MultiplayerLobbyScene');
+        }
+      });
+    });
+
+    this.multiplayerButton = container;
   };
 
   proto.createInstructions = function(width, height) {
