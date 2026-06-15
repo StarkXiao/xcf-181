@@ -1952,6 +1952,7 @@
     this.scoreManager.addDistanceScore(carX);
     this.scoreManager.updateStats(this.carPhysics);
     this.scoreManager.updateCombo(delta);
+    this.scoreManager.recordReplaySample(this.carPhysics);
     this.comboTextCooldown = Math.max(0, this.comboTextCooldown - delta);
 
     if (this.scoreManager.comboCount > prevComboCount && this.scoreManager.comboCount > 1) {
@@ -1980,6 +1981,7 @@
         this.carPhysics.applyDamage();
         this.carPhysics.slowDown(collision.slowdown);
         var dead = this.scoreManager.takeDamage(collision.damage);
+        this.scoreManager.recordHitEvent('rock', collision.damage);
         this.damageCooldown = 800;
         this.screenShake(6, 200);
 
@@ -2037,6 +2039,7 @@
         if (damageAmount > 0) {
           this.carPhysics.applyDamage();
           var destDead = this.scoreManager.takeDamage(damageAmount);
+          this.scoreManager.recordHitEvent(collision.type, damageAmount);
           this.damageCooldown = collision.type === 'barrel' ? 1000 : 600;
           this.screenShake(shakeIntensity, shakeDuration);
 
@@ -2072,6 +2075,7 @@
     var dangerResult = this.dangerZones.update(carX, this.carPhysics, delta, Date.now());
     if (dangerResult.damage > 0) {
       var deadDanger = this.scoreManager.takeDamage(dangerResult.damage);
+      this.scoreManager.recordHitEvent('dangerZone', dangerResult.damage);
       this.damageCooldown = 500;
       this.screenShake(4, 150);
       if (this.scoreManager.comboBreakReason === 'damage') {
@@ -3185,6 +3189,7 @@
           this.rolloverDamageApplied = true;
           this.carPhysics.consumeRolloverDamage();
           this.carPhysics.applyDamage();
+          this.scoreManager.recordHitEvent('rollover', result.damage);
           this.screenShake(8, 300);
           this.showFloatingText(carX, this.carPhysics.car.y - 100,
             '🔄 翻车! -' + result.damage + ' HP', 0xf44336);
@@ -3358,6 +3363,7 @@
     var previousBest = this.scoreManager.previousBestStats;
     var replayComparison = this.scoreManager.getReplayComparisonData();
     var starRating = win ? this.scoreManager.getStarRating() : null;
+    var replayAnalysis = this.scoreManager.getReplayAnalysis();
 
     this.time.delayedCall(600, function() {
       self.scene.start('GameOverScene', {
@@ -3375,7 +3381,8 @@
         runHistory: runHistory,
         previousBestStats: previousBest,
         replayComparison: replayComparison,
-        starRating: starRating
+        starRating: starRating,
+        replayAnalysis: replayAnalysis
       });
     });
   };

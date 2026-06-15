@@ -100,6 +100,17 @@
     this.lastSegmentX = 0;
     this.segmentInterval = 500;
 
+    this.replayData = {
+      speedSamples: [],
+      hitEvents: [],
+      mistakes: [],
+      bestSegments: [],
+      lastSampleDistance: 0,
+      sampleDistanceInterval: 50,
+      segmentWindow: 500,
+      bestSegmentScore: 0
+    };
+
     this.starRating = null;
     this.hiddenObjectives = {
       hiddenBranchesVisited: 0,
@@ -1239,6 +1250,207 @@
 
   proto.getChapterStarSummary = function() {
     return this.highScoreMgr.getChapterStarSummary(3);
+  };
+
+  proto.recordReplaySample = function(carPhysics) {
+    if (!carPhysics) return;
+    var rd = this.replayData;
+    var currentDist = Math.floor(this.distance);
+
+    if (currentDist - rd.lastSampleDistance < rd.sampleDistanceInterval) return;
+    rd.lastSampleDistance = currentDist;
+
+    var speed = carPhysics.getSpeed();
+    var speedKmh = Math.round(speed * 0.6);
+
+    rd.speedSamples.push({
+      distance: currentDist,
+      speed: speedKmh,
+      health: this.health,
+      combo: this.comboCount,
+      branch: this.currentBranch,
+      time: Date.now() - this.startTime
+    });
+
+    var segStartIdx = null;
+    for (var i = rd.speedSamples.length - 1; i >= 0; i--) {
+      if (currentDist - rd.speedSamples[i].distance >= rd.segmentWindow) {
+        segStartIdx = i;
+        break;
+      }
+    }
+
+    if (segStartIdx !== null && rd.speedSamples.length > 0) {
+      var startSample = rd.speedSamples[segStartIdx];
+      var avgSpeed = 0;
+      var count = 0;
+      var hadHit = false;
+
+      for (var s = segStartIdx; s < rd.speedSamples.length; s++) {
+        avgSpeed += rd.speedSamples[s].speed;
+        count++;
+      }
+
+      for (var h = rd.hitEvents.length - 1; h >= 0; h--) {
+        var hit = rd.hitEvents[h];
+        if (hit.distance >= startSample.distance && hit.distance <= currentDist) {
+          hadHit = true;
+          break;
+        }
+      }
+
+      if (count > 0) avgSpeed = avgSpeed / count;
+      var healthDelta = this.health - startSample.health;
+      var segScore = avgSpeed + (healthDelta >= 0 ? 20 : 0) + (hadHit ? 0 : 30);
+
+      if (segScore > rd.bestSegmentScore) {
+        rd.bestSegmentScore = segScore;
+        rd.bestSegments = [{
+          startDistance: startSample.distance,
+          endDistance: currentDist,
+          avgSpeed: Math.round(avgSpeed),
+          healthDelta: healthDelta,
+          hadHit: hadHit,
+          branch: this.currentBranch,
+          score: segScore
+        }];
+      }
+    }
+  };
+
+  proto.recordHitEvent = function(type, damage) {
+    this.replayData.hitEvents.push({
+      type: type,
+      damage: damage,
+      distance: Math.floor(this.distance),
+      health: this.health,
+      combo: this.comboCount,
+      branch: this.currentBranch,
+      time: Date.now() - this.startTime
+    });
+
+    var isMajorMistake = damage >= 15 || (this.comboCount >= 3 && type !== 'sign');
+    var isMediumMistake = damage >= 5 || this.comboCount >= 1;
+    var severity = isMajorMistake ? 'major' : (isMediumMistake ? 'medium' : 'minor');
+
+    var labels = {
+      'rock': '撞石',
+      'barrel': '油桶',
+      'crate': '木箱',
+      'sign': '路牌',
+      'dangerZone': '危险区',
+      'rollover': '翻车'
+    };
+
+    var consequences = [];
+    if (damage > 0) consequences.push('生命-' + damage);
+    if (this.comboCount === 0 && this.comboBreakReason === 'damage') consequences.push('连击中断');
+    if (this.health <= 20) consequences.push('濒危状态');
+
+    this.replayData.mistakes.push({
+      type: type,
+      label: labels[type] || type,
+      severity: severity,
+      damage: damage,
+      distance: Math.floor(this.distance),
+      health: this.health,
+      comboLost: this.comboBreakReason === 'damage' ? this.comboCount : 0,
+      consequences: consequences,
+      branch: this.currentBranch,
+      time: Date.now() - this.startTime
+    });
+  };
+
+  proto.getReplayAnalysis = function() {
+    var rd = this.replayData;
+    var samples = rd.speedSamples;
+    var levelLen = this.levelLength > 0 ? this.levelLength : Math.max(this.distance, 1);
+
+    var analysis = {
+      speedCurve: [],
+      hitNodes: [],
+      keyMistakes: [],
+      bestSegment: null,
+      speedStats: null,
+      distanceTotal: Math.floor(this.distance)
+    };
+
+    for (var i = 0; i < samples.length; i++) {
+      var s = samples[i];
+      analysis.speedCurve.push({
+        distance: s.distance,
+        speed: s.speed,
+        health: s.health,
+        combo: s.combo,
+        branch: s.branch,
+        pct: Math.min(1, s.distance / levelLen)
+      });
+    }
+
+    for (var h = 0; h < rd.hitEvents.length; h++) {
+      var hit = rd.hitEvents[h];
+      analysis.hitNodes.push({
+        type: hit.type,
+        damage: hit.damage,
+        distance: hit.distance,
+        health: hit.health,
+        combo: hit.combo,
+        branch: hit.branch,
+        pct: Math.min(1, hit.distance / levelLen)
+      });
+    }
+
+    var majorMistakes = [];
+    var mediumMistakes = [];
+    for (var m = 0; m < rd.mistakes.length; m++) {
+      var mistake = rd.mistakes[m];
+      var mistakeData = {
+        type: mistake.type,
+        label: mistake.label,
+        severity: mistake.severity,
+        damage: mistake.damage,
+        distance: mistake.distance,
+        health: mistake.health,
+        comboLost: mistake.comboLost,
+        consequences: mistake.consequences,
+        branch: mistake.branch,
+        pct: Math.min(1, mistake.distance / levelLen)
+      };
+      if (mistake.severity === 'major') majorMistakes.push(mistakeData);
+      else if (mistake.severity === 'medium') mediumMistakes.push(mistakeData);
+    }
+    analysis.keyMistakes = majorMistakes.concat(mediumMistakes.slice(0, 5));
+
+    if (rd.bestSegments.length > 0) {
+      var best = rd.bestSegments[0];
+      analysis.bestSegment = {
+        startDistance: best.startDistance,
+        endDistance: best.endDistance,
+        avgSpeed: best.avgSpeed,
+        healthDelta: best.healthDelta,
+        hadHit: best.hadHit,
+        branch: best.branch,
+        startPct: best.startDistance / levelLen,
+        endPct: best.endDistance / levelLen
+      };
+    }
+
+    if (samples.length > 0) {
+      var maxSpd = 0, minSpd = Infinity, totalSpd = 0;
+      for (var sp = 0; sp < samples.length; sp++) {
+        var spd = samples[sp].speed;
+        if (spd > maxSpd) maxSpd = spd;
+        if (spd < minSpd) minSpd = spd;
+        totalSpd += spd;
+      }
+      analysis.speedStats = {
+        max: maxSpd,
+        min: minSpd === Infinity ? 0 : minSpd,
+        avg: Math.round(totalSpd / samples.length)
+      };
+    }
+
+    return analysis;
   };
 
   proto.destroy = function() {};
