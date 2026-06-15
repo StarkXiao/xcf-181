@@ -112,8 +112,12 @@
     this.loadUnlockedBranches();
 
     if (this.seasonMode && this.chapterId && this.nodeId) {
-      this.initializeSeasonEvent();
-      this.createEventHUD(width, height);
+      if (this.nodeType === 'event' && this.eventLevelMgr && !this.eventLevelMgr.isEventActive()) {
+        this.initializeSeasonEvent();
+      }
+      if (this.eventLevelMgr && this.eventLevelMgr.isEventActive()) {
+        this.createEventHUD(width, height);
+      }
     }
   };
 
@@ -3430,37 +3434,27 @@
     if (this.seasonMode && this.chapterId && this.nodeId) {
       try {
         var runStats = this.getSeasonRunStats(win);
-        var eventResult = null;
+        runStats.stars = starRating ? (starRating.stars || 0) : 0;
 
-        if (this.eventLevelMgr && this.eventLevelMgr.isEventActive()) {
-          eventResult = this.eventLevelMgr.finalizeEvent(runStats, starRating);
-        }
-
-        if (win && this.seasonDM) {
-          this.seasonDM.updateNodeProgress(this.chapterId, this.nodeId, runStats);
-        }
-
-        var rewardResult = null;
         if (this.rewardSystem) {
-          rewardResult = this.rewardSystem.processGameRunRewards(runStats, starRating, true);
+          seasonResult = this.rewardSystem.processGameRunRewards(runStats, starRating, true);
+          seasonResult.chapterId = this.chapterId;
+          seasonResult.nodeId = this.nodeId;
+          seasonResult.nodeType = this.nodeType;
+          seasonResult.runStats = runStats;
+          seasonResult.starRating = starRating;
+        } else {
+          this.seasonDM.clearRunContext();
+          if (this.eventLevelMgr && this.eventLevelMgr.isEventActive()) {
+            this.eventLevelMgr.cancelEvent();
+          }
         }
-
-        seasonResult = {
-          chapterId: this.chapterId,
-          nodeId: this.nodeId,
-          nodeType: this.nodeType,
-          runStats: runStats,
-          eventResult: eventResult,
-          rewardResult: rewardResult,
-          starRating: starRating
-        };
-
-        if (this.eventLevelMgr) {
-          this.eventLevelMgr.cancelEvent();
-        }
-        this.seasonDM.clearRunContext();
       } catch (e) {
         console.warn('[GameScene] season mode processing error:', e);
+        this.seasonDM.clearRunContext();
+        if (this.eventLevelMgr && this.eventLevelMgr.isEventActive()) {
+          this.eventLevelMgr.cancelEvent();
+        }
       }
     }
 

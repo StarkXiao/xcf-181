@@ -2161,16 +2161,14 @@
     if (!this.seasonResult) return;
 
     var result = this.seasonResult;
-    var rewardResult = result.rewardResult;
-    var eventResult = result.eventResult;
-
     var panelY = height / 2 + 200;
     if (this.win && this.starRating) panelY = height / 2 + 300;
     else if (this.win && this.detailedStats) panelY = height / 2 + 370;
 
-    var hasRewards = rewardResult && (rewardResult.coins > 0 || 
-      (rewardResult.unlockedParts && rewardResult.unlockedParts.length > 0) ||
-      (rewardResult.seasonXP > 0));
+    var hasRewards = result.coins > 0 ||
+      result.seasonXP > 0 ||
+      (result.unlockedParts && result.unlockedParts.length > 0) ||
+      (result.eventEvaluation && result.eventEvaluation.passed);
 
     if (!hasRewards) return;
 
@@ -2178,29 +2176,47 @@
     var items = [];
     items.push({ icon: '🎉', text: '赛季奖励', header: true });
 
-    if (rewardResult.seasonXP > 0) {
-      items.push({ icon: '🏅', text: '赛季经验: +' + rewardResult.seasonXP + ' XP' });
+    if (result.mode === 'season_event' && result.eventEvaluation) {
+      var evl = result.eventEvaluation;
+      items.push({ icon: evl.passed ? '✅' : '❌', text: evl.summary ? evl.summary.result : (evl.passed ? '事件挑战成功' : '事件挑战失败') });
+      if (evl.summary && evl.summary.objectives) {
+        items.push({ icon: '🎯', text: evl.summary.objectives });
+      }
     }
-    if (rewardResult.coins > 0) {
-      items.push({ icon: '💰', text: '金币: +' + rewardResult.coins });
+
+    if (result.seasonXP > 0) {
+      items.push({ icon: '🏅', text: '赛季经验: +' + result.seasonXP + ' XP' });
     }
-    if (rewardResult.unlockedParts && rewardResult.unlockedParts.length > 0) {
-      for (var i = 0; i < rewardResult.unlockedParts.length; i++) {
-        var part = rewardResult.unlockedParts[i];
-        var partText = '🔧 解锁部件: ' + part.name;
-        if (part.discount) partText += ' (' + Math.floor(part.discount * 100) + '%折扣)';
-        if (part.upgraded) partText += ' (已自动升级)';
+    if (result.coins > 0) {
+      items.push({ icon: '💰', text: '金币: +' + result.coins });
+    }
+    if (result.unlockedParts && result.unlockedParts.length > 0) {
+      for (var i = 0; i < result.unlockedParts.length; i++) {
+        var part = result.unlockedParts[i];
+        if (part.alreadyOwned) continue;
+        var partText = '🔧 ' + (part.category || '') + ': ';
+        if (part.newlyUnlocked) partText += '新解锁';
+        else if (part.isUpgrade) partText += '已升级';
+        else if (part.isDiscount) partText += '折扣解锁';
+        else partText += (part.partId || '');
         items.push({ icon: '✨', text: partText, highlight: true });
       }
     }
-    if (rewardResult.levelUp) {
-      items.push({ icon: '🎊', text: '等级提升! Lv.' + rewardResult.newLevel, highlight: true });
+    if (result.growthResult && result.growthResult.autoEquipped && result.growthResult.autoEquipped.length > 0) {
+      var powerDiff = result.growthResult.powerAfter - result.growthResult.powerBefore;
+      items.push({ icon: '📈', text: '战力提升: +' + powerDiff, highlight: true });
     }
-    if (rewardResult.newUnlocks && rewardResult.newUnlocks.length > 0) {
-      for (var j = 0; j < rewardResult.newUnlocks.length; j++) {
-        var unlock = rewardResult.newUnlocks[j];
-        items.push({ icon: '🔓', text: '解锁: ' + unlock, highlight: true });
-      }
+    if (result.levelUp && result.newLevel) {
+      items.push({ icon: '🎊', text: '等级提升! Lv.' + result.newLevel, highlight: true });
+    }
+    if (result.chapterCompleted) {
+      items.push({ icon: '🎊', text: '章节完成!', highlight: true });
+    }
+    if (result.seasonCompleted) {
+      items.push({ icon: '🏆', text: '赛季完成!', highlight: true });
+    }
+    if (result.newUnlocks && result.newUnlocks.length > 0) {
+      items.push({ icon: '🔓', text: '新节点解锁: ' + result.newUnlocks.join(', ') });
     }
 
     var panelH = items.length * 32 + 30;

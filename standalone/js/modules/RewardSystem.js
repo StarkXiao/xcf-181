@@ -605,46 +605,101 @@
       return { success: false, reason: 'no_run_context' };
     }
 
-    if (runContext.mode === 'season_event') {
+    var seasonDM = this._dm.getSeasonDataManager();
+    var chapterId = runContext.chapterId;
+    var nodeId = runContext.nodeId;
+    var mode = runContext.mode;
+    var eventType = runContext.eventType;
+    var carGrowth = this._dm.getCarGrowthSystem();
+
+    var finalStats = {
+      ...runStats,
+      stars: starRating ? (starRating.stars || 0) : 0
+    };
+
+    var eventEvaluation = null;
+
+    if (mode === 'season_event') {
       var eventMgr = this._dm.getEventLevelManager();
-      var result = eventMgr.finalizeEvent(runStats, starRating);
-      return {
-        success: true,
-        isEvent: true,
-        eventResult: result
-      };
-    } else if (runContext.mode === 'season_race' || runContext.mode === 'season_boss') {
-      var seasonDM = this._dm.getSeasonDataManager();
-      var finalStats = {
-        ...runStats,
-        stars: starRating ? (starRating.stars || 0) : 0
-      };
-      var updateRes = seasonDM.updateNodeProgress(
-        runContext.chapterId,
-        runContext.nodeId,
-        finalStats
-      );
-
-      var rewards = null;
-      if (runStats.isComplete) {
-        rewards = this.processNodeRewards(
-          runContext.chapterId,
-          runContext.nodeId,
-          finalStats,
-          null
-        );
+      if (eventMgr.isEventActive()) {
+        var eventResult = eventMgr.finalizeEvent(runStats, starRating);
+        if (eventResult && eventResult.success) {
+          eventEvaluation = eventResult.evaluation;
+          finalStats.totalScore = eventResult.runStats.totalScore;
+          finalStats.stars = eventResult.runStats.stars;
+          finalStats.isComplete = eventResult.runStats.isComplete;
+        }
+      } else {
+        seasonDM.clearRunContext();
+        return { success: false, reason: 'event_already_finalized' };
       }
-
-      seasonDM.clearRunContext();
-      return {
-        success: true,
-        isRace: true,
-        updateResult: updateRes,
-        rewards: rewards
-      };
     }
 
-    return { success: false, reason: 'unknown_mode' };
+    var updateResult = null;
+    if (runStats.isComplete || finalStats.isComplete) {
+      updateResult = seasonDM.updateNodeProgress(chapterId, nodeId, finalStats);
+    } else {
+      seasonDM.updateNodeProgress(chapterId, nodeId, finalStats);
+    }
+
+    var rewards = null;
+    if (finalStats.isComplete) {
+      rewards = this.processNodeRewards(chapterId, nodeId, finalStats, eventEvaluation);
+    }
+
+    var growthResult = null;
+    if (carGrowth && finalStats.isComplete) {
+      growthResult = carGrowth.applyRaceGrowth(chapterId, nodeId, finalStats);
+    }
+
+    seasonDM.clearRunContext();
+
+    var summary = {
+      success: true,
+      isSeason: true,
+      chapterId: chapterId,
+      nodeId: nodeId,
+      mode: mode,
+      eventEvaluation: eventEvaluation,
+      updateResult: updateResult,
+      rewards: rewards,
+      growthResult: growthResult
+    };
+
+    if (rewards) {
+      var nodeRewards = rewards.nodeRewards || {};
+      summary.coins = (nodeRewards.coins || 0) +
+        (rewards.recurringRewards ? (rewards.recurringRewards.coins || 0) : 0) +
+        (rewards.starsBonus ? (rewards.starsBonus.coins || 0) : 0);
+      summary.seasonXP = (nodeRewards.seasonXP || 0) +
+        (rewards.recurringRewards ? (rewards.recurringRewards.seasonXP || 0) : 0) +
+        (rewards.starsBonus ? (rewards.starsBonus.seasonXP || 0) : 0);
+      summary.unlockedParts = (nodeRewards.parts || []).concat(
+        rewards.chapterRewards ? (rewards.chapterRewards.parts || []) : [],
+        rewards.seasonRewards ? (rewards.seasonRewards.parts || []) : []
+      );
+      summary.levelUp = !!(nodeRewards.seasonXP > 0 && updateResult);
+      summary.newLevel = seasonDM.getSeasonLevel();
+      summary.chapterCompleted = rewards.chapterCompleted || false;
+      summary.seasonCompleted = rewards.seasonCompleted || false;
+      summary.chapterRewards = rewards.chapterRewards;
+      summary.seasonRewards = rewards.seasonRewards;
+
+      if (updateResult && updateResult.firstClear) {
+        summary.newUnlocks = [];
+        var unlockedNodes = this._dm.getData('season.unlockedNodes', {});
+        var chapterUnlocked = unlockedNodes[chapterId] || [];
+        summary.newUnlocks = chapterUnlocked.map(function(nid) { return nid; });
+      }
+    } else {
+      summary.coins = 0;
+      summary.seasonXP = 0;
+      summary.unlockedParts = [];
+    }
+
+    this._dm._emit('seasonRaceCompleted', summary);
+
+    return summary;
   };
 
   proto.initializeSeasonRace = function(chapterId, nodeId) {

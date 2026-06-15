@@ -716,30 +716,10 @@
       isComplete: evaluation.passed ? runStats.isComplete : false
     };
 
-    var seasonDM = this._dm.getSeasonDataManager();
-    var updateResult = seasonDM.updateNodeProgress(
-      this._activeEvent.chapterId,
-      this._activeEvent.nodeId,
-      finalRunStats
-    );
-
-    var rewards = null;
-    if (evaluation.passed && runStats.isComplete) {
-      var rewardSystem = this._dm.getRewardSystem();
-      rewards = rewardSystem.processNodeRewards(
-        this._activeEvent.chapterId,
-        this._activeEvent.nodeId,
-        finalRunStats,
-        evaluation
-      );
-    }
-
     var result = {
       success: true,
       evaluation: evaluation,
-      runStats: finalRunStats,
-      updateResult: updateResult,
-      rewards: rewards
+      runStats: finalRunStats
     };
 
     this._dm._emit('eventFinalized', {
@@ -749,6 +729,7 @@
 
     this._activeEvent = null;
     this._eventContext = null;
+    var seasonDM = this._dm.getSeasonDataManager();
     seasonDM.clearRunContext();
 
     return result;

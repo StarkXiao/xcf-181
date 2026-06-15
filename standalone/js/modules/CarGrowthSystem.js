@@ -382,5 +382,64 @@
     };
   };
 
+  proto.applyRaceGrowth = function(chapterId, nodeId, runStats) {
+    var garageMgr = this._dm.getGarageManager();
+    var seasonDM = this._dm.getSeasonDataManager();
+    var result = {
+      autoEquipped: [],
+      powerBefore: garageMgr.getCurrentPerformanceRating(),
+      powerAfter: 0,
+      newUnlockedParts: []
+    };
+
+    var equipped = garageMgr.getEquippedParts();
+    var unlockedParts = garageMgr.getUnlockedParts();
+    var categories = ['engine', 'tires', 'suspension', 'brakes', 'body', 'nitro'];
+
+    for (var i = 0; i < categories.length; i++) {
+      var cat = categories[i];
+      var currentPartId = equipped[cat];
+      var currentCfg = MountainRacer.PartsConfig.getPartConfig(cat, currentPartId);
+      var currentTier = currentCfg ? currentCfg.tier : 0;
+      var allParts = MountainRacer.PartsConfig.getAllPartsByCategory(cat);
+      var partIds = Object.keys(allParts);
+      var bestTier = currentTier;
+      var bestPartId = currentPartId;
+
+      for (var j = 0; j < partIds.length; j++) {
+        var pid = partIds[j];
+        var pcfg = allParts[pid];
+        if (!pcfg) continue;
+        if (!garageMgr.isPartUnlocked(pid)) continue;
+        if (pcfg.tier > bestTier) {
+          bestTier = pcfg.tier;
+          bestPartId = pid;
+        }
+      }
+
+      if (bestPartId && bestPartId !== currentPartId) {
+        equipped[cat] = bestPartId;
+        result.autoEquipped.push({
+          category: cat,
+          from: currentPartId,
+          to: bestPartId,
+          tierUpgrade: bestTier - currentTier
+        });
+      }
+    }
+
+    if (result.autoEquipped.length > 0) {
+      this._dm.setData('garage.equippedParts', equipped);
+      this._dm._emit('partsAutoEquipped', {
+        equipped: equipped,
+        changes: result.autoEquipped
+      });
+    }
+
+    result.powerAfter = garageMgr.getCurrentPerformanceRating();
+
+    return result;
+  };
+
   window.MountainRacer = MountainRacer;
 })();
