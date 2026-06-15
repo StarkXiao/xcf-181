@@ -31,6 +31,8 @@
     this.activeTab = 'summary';
     this.highScoreAnimationPlayed = false;
     this.tabContentElements = [];
+    this.seasonMode = !!(data && data.seasonMode);
+    this.seasonResult = data.seasonResult || null;
   };
 
   proto.create = function() {
@@ -46,6 +48,10 @@
       this.showTab('summary');
     } else {
       this.createStats(width, height);
+    }
+
+    if (this.seasonMode && this.seasonResult) {
+      this.createSeasonRewardPanel(width, height);
     }
 
     this.createButtons(width, height);
@@ -2115,14 +2121,32 @@
     };
 
     createBtn(startX, '🏠 菜单', 0x9e9e9e, function() {
-      self.scene.start('MenuScene');
+      if (self.seasonMode) {
+        self.scene.start('ChapterMapScene', { chapterId: self.seasonResult ? self.seasonResult.chapterId : null });
+      } else {
+        self.scene.start('MenuScene');
+      }
     });
 
     createBtn(startX + btnW + gap, '🔄 重玩', 0x2196f3, function() {
-      self.scene.start('GameScene', { level: self.level });
+      if (self.seasonMode && self.seasonResult) {
+        self.scene.start('GameScene', {
+          level: self.level,
+          seasonMode: true,
+          chapterId: self.seasonResult.chapterId,
+          nodeId: self.seasonResult.nodeId,
+          nodeType: self.seasonResult.nodeType
+        });
+      } else {
+        self.scene.start('GameScene', { level: self.level });
+      }
     });
 
-    if (this.win && this.level < 3) {
+    if (self.seasonMode) {
+      createBtn(startX + (btnW + gap) * 2, '🗺️ 返回地图', 0x4caf50, function() {
+        self.scene.start('ChapterMapScene', { chapterId: self.seasonResult ? self.seasonResult.chapterId : null });
+      });
+    } else if (this.win && this.level < 3) {
       createBtn(startX + (btnW + gap) * 2, '➡ 下一关', 0x4caf50, function() {
         self.scene.start('GameScene', { level: self.level + 1 });
       });
@@ -2131,6 +2155,96 @@
         self.scene.start('GameScene', { level: self.level });
       });
     }
+  };
+
+  proto.createSeasonRewardPanel = function(width, height) {
+    if (!this.seasonResult) return;
+
+    var result = this.seasonResult;
+    var rewardResult = result.rewardResult;
+    var eventResult = result.eventResult;
+
+    var panelY = height / 2 + 200;
+    if (this.win && this.starRating) panelY = height / 2 + 300;
+    else if (this.win && this.detailedStats) panelY = height / 2 + 370;
+
+    var hasRewards = rewardResult && (rewardResult.coins > 0 || 
+      (rewardResult.unlockedParts && rewardResult.unlockedParts.length > 0) ||
+      (rewardResult.seasonXP > 0));
+
+    if (!hasRewards) return;
+
+    var panelW = 380;
+    var items = [];
+    items.push({ icon: '🎉', text: '赛季奖励', header: true });
+
+    if (rewardResult.seasonXP > 0) {
+      items.push({ icon: '🏅', text: '赛季经验: +' + rewardResult.seasonXP + ' XP' });
+    }
+    if (rewardResult.coins > 0) {
+      items.push({ icon: '💰', text: '金币: +' + rewardResult.coins });
+    }
+    if (rewardResult.unlockedParts && rewardResult.unlockedParts.length > 0) {
+      for (var i = 0; i < rewardResult.unlockedParts.length; i++) {
+        var part = rewardResult.unlockedParts[i];
+        var partText = '🔧 解锁部件: ' + part.name;
+        if (part.discount) partText += ' (' + Math.floor(part.discount * 100) + '%折扣)';
+        if (part.upgraded) partText += ' (已自动升级)';
+        items.push({ icon: '✨', text: partText, highlight: true });
+      }
+    }
+    if (rewardResult.levelUp) {
+      items.push({ icon: '🎊', text: '等级提升! Lv.' + rewardResult.newLevel, highlight: true });
+    }
+    if (rewardResult.newUnlocks && rewardResult.newUnlocks.length > 0) {
+      for (var j = 0; j < rewardResult.newUnlocks.length; j++) {
+        var unlock = rewardResult.newUnlocks[j];
+        items.push({ icon: '🔓', text: '解锁: ' + unlock, highlight: true });
+      }
+    }
+
+    var panelH = items.length * 32 + 30;
+
+    var panel = this.add.container(width / 2, panelY);
+    panel.setDepth(100);
+
+    var bg = this.add.graphics();
+    bg.fillStyle(0x1a1a2e, 0.95);
+    bg.fillRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 14);
+    bg.lineStyle(3, 0xffd700, 0.9);
+    bg.strokeRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 14);
+    panel.add(bg);
+
+    for (var k = 0; k < items.length; k++) {
+      var item = items[k];
+      var y = -panelH / 2 + 20 + k * 32;
+      var itemText = this.add.text(-panelW / 2 + 20, y, item.icon + ' ' + item.text, {
+        fontSize: item.header ? '18px' : '14px',
+        fontWeight: item.header ? 'bold' : 'normal',
+        color: item.highlight ? '#ffd700' : (item.header ? '#ff9800' : '#ffffff')
+      }).setOrigin(0, 0.5);
+      panel.add(itemText);
+
+      if (item.header) {
+        var line = this.add.graphics();
+        line.lineStyle(1, 0xffd700, 0.3);
+        line.beginPath();
+        line.moveTo(-panelW / 2 + 20, y + 14);
+        line.lineTo(panelW / 2 - 20, y + 14);
+        line.strokePath();
+        panel.add(line);
+      }
+    }
+
+    panel.setAlpha(0);
+    this.tweens.add({
+      targets: panel,
+      alpha: 1,
+      y: panelY,
+      duration: 500,
+      delay: 300,
+      ease: 'Back.easeOut'
+    });
   };
 
   window.MountainRacer = MountainRacer;

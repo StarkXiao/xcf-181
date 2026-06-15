@@ -15,6 +15,17 @@
     this.dataManager = MountainRacer.DataManager.getInstance();
     this.dataManager.init();
     this.unlockMgr = this.dataManager.getUnlockManager();
+    this.seasonMode = !!(data && data.seasonMode);
+    this.chapterId = data && data.chapterId ? data.chapterId : null;
+    this.nodeId = data && data.nodeId ? data.nodeId : null;
+    this.nodeType = data && data.nodeType ? data.nodeType : 'race';
+    this.branchConfig = data && data.branchConfig ? data.branchConfig : null;
+    this.bossConfig = data && data.bossConfig ? data.bossConfig : null;
+    if (this.seasonMode) {
+      this.eventLevelMgr = this.dataManager.getEventLevelManager();
+      this.seasonDM = this.dataManager.getSeasonDataManager();
+      this.rewardSystem = this.dataManager.getRewardSystem();
+    }
   };
 
   proto.create = function() {
@@ -99,6 +110,11 @@
     this.autoLoadSceneLayout();
 
     this.loadUnlockedBranches();
+
+    if (this.seasonMode && this.chapterId && this.nodeId) {
+      this.initializeSeasonEvent();
+      this.createEventHUD(width, height);
+    }
   };
 
   proto.autoLoadSceneLayout = function() {
@@ -2006,6 +2022,7 @@
         this.carPhysics.slowDown(collision.slowdown);
         var dead = this.scoreManager.takeDamage(collision.damage);
         this.scoreManager.recordHitEvent('rock', collision.damage, carX);
+        this.trackSeasonEvent('damage', { amount: collision.damage, source: 'rock', position: carX });
         this.damageCooldown = 800;
         this.screenShake(6, 200);
 
@@ -2064,6 +2081,7 @@
           this.carPhysics.applyDamage();
           var destDead = this.scoreManager.takeDamage(damageAmount);
           this.scoreManager.recordHitEvent(collision.type, damageAmount, carX);
+          this.trackSeasonEvent('damage', { amount: damageAmount, source: collision.type, position: carX });
           this.damageCooldown = collision.type === 'barrel' ? 1000 : 600;
           this.screenShake(shakeIntensity, shakeDuration);
 
@@ -2100,6 +2118,7 @@
     if (dangerResult.damage > 0) {
       var deadDanger = this.scoreManager.takeDamage(dangerResult.damage);
       this.scoreManager.recordHitEvent('dangerZone', dangerResult.damage, carX);
+      this.trackSeasonEvent('damage', { amount: dangerResult.damage, source: 'dangerZone', position: carX });
       this.damageCooldown = 500;
       this.screenShake(4, 150);
       if (this.scoreManager.comboBreakReason === 'damage') {
@@ -2125,6 +2144,12 @@
       var collectLabel = collectResult.type === 'gem' ? '+' + earned + ' 宝石!' : '+' + earned + ' 金币!';
       var collectColor = collectResult.type === 'gem' ? 0xe91e63 : 0xffd700;
       this.showFloatingText(carX, this.carPhysics.car.y - 60, collectLabel, collectColor);
+      this.trackSeasonEvent('collect', {
+        collectibleId: collectResult.id,
+        collectibleType: collectResult.type,
+        value: collectResult.value,
+        position: carX
+      });
     }
 
     this.damageCooldown = Math.max(0, this.damageCooldown - delta);
@@ -3401,6 +3426,44 @@
       console.warn('[GameScene] applyCoinsFromRun error:', e);
     }
 
+    var seasonResult = null;
+    if (this.seasonMode && this.chapterId && this.nodeId) {
+      try {
+        var runStats = this.getSeasonRunStats(win);
+        var eventResult = null;
+
+        if (this.eventLevelMgr && this.eventLevelMgr.isEventActive()) {
+          eventResult = this.eventLevelMgr.finalizeEvent(runStats, starRating);
+        }
+
+        if (win && this.seasonDM) {
+          this.seasonDM.updateNodeProgress(this.chapterId, this.nodeId, runStats);
+        }
+
+        var rewardResult = null;
+        if (this.rewardSystem) {
+          rewardResult = this.rewardSystem.processGameRunRewards(runStats, starRating, true);
+        }
+
+        seasonResult = {
+          chapterId: this.chapterId,
+          nodeId: this.nodeId,
+          nodeType: this.nodeType,
+          runStats: runStats,
+          eventResult: eventResult,
+          rewardResult: rewardResult,
+          starRating: starRating
+        };
+
+        if (this.eventLevelMgr) {
+          this.eventLevelMgr.cancelEvent();
+        }
+        this.seasonDM.clearRunContext();
+      } catch (e) {
+        console.warn('[GameScene] season mode processing error:', e);
+      }
+    }
+
     this.time.delayedCall(600, function() {
       self.scene.start('GameOverScene', {
         level: self.level,
@@ -3419,7 +3482,9 @@
         replayComparison: replayComparison,
         starRating: starRating,
         replayAnalysis: replayAnalysis,
-        coinReward: coinReward
+        coinReward: coinReward,
+        seasonMode: self.seasonMode,
+        seasonResult: seasonResult
       });
     });
   };
@@ -3476,6 +3541,134 @@
       this.rolloverCooldownHUDText = null;
     }
     this.closeBranchSelect();
+  };
+
+  proto.initializeSeasonEvent = function() {
+    if (!this.eventLevelMgr || !this.chapterId || !this.nodeId) return;
+    var result = this.eventLevelMgr.initializeEvent(this.chapterId, this.nodeId);
+    if (result && result.success) {
+      console.log('[Season] 事件关卡已初始化:', this.chapterId, this.nodeId, result.eventType);
+    }
+  };
+
+  proto.createEventHUD = function(width, height) {
+    if (!this.eventLevelMgr || !this.eventLevelMgr.isEventActive()) return;
+
+    var eventInfo = this.eventLevelMgr.getActiveEvent();
+    if (!eventInfo) return;
+
+    var eventTypeInfo = MountainRacer.SeasonConfig.getEventType(eventInfo.eventType);
+    var eventName = eventTypeInfo ? eventTypeInfo.name : '特殊关卡';
+    var eventIcon = eventTypeInfo ? eventTypeInfo.icon : '🎯';
+
+    var eventHUD = this.add.container(width / 2, 80);
+    eventHUD.setDepth(600);
+
+    var bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.6);
+    bg.fillRoundedRect(-160, -25, 320, 50, 12);
+    bg.setScrollFactor(0);
+
+    var border = this.add.graphics();
+    border.lineStyle(2, 0xff6b35, 0.8);
+    border.strokeRoundedRect(-160, -25, 320, 50, 12);
+    border.setScrollFactor(0);
+
+    var iconText = this.add.text(-140, 0, eventIcon, {
+      fontSize: '24px'
+    }).setOrigin(0, 0.5).setScrollFactor(0);
+
+    var nameText = this.add.text(-105, -8, eventName, {
+      fontSize: '16px',
+      fontWeight: 'bold',
+      color: '#ffd700'
+    }).setOrigin(0, 0).setScrollFactor(0);
+
+    var descText = this.add.text(-105, 10, eventInfo.node ? eventInfo.node.description : '', {
+      fontSize: '11px',
+      color: '#b0bec5',
+      wordWrap: { width: 230 }
+    }).setOrigin(0, 0).setScrollFactor(0);
+
+    eventHUD.add([bg, border, iconText, nameText, descText]);
+    this.eventHUD = eventHUD;
+
+    this.updateEventProgressHUD();
+  };
+
+  proto.updateEventProgressHUD = function() {
+    if (!this.eventLevelMgr || !this.eventLevelMgr.isEventActive()) return;
+
+    var report = this.eventLevelMgr.getEventProgressReport();
+    if (!report || !report.objectives) return;
+
+    if (this.eventProgressHUD) {
+      this.eventProgressHUD.destroy();
+    }
+
+    var width = this.scale.width;
+    var eventProgressHUD = this.add.container(width - 20, 130);
+    eventProgressHUD.setDepth(601);
+
+    var objectives = report.objectives;
+    var totalH = objectives.length * 22 + 20;
+
+    var bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.5);
+    bg.fillRoundedRect(-180, -totalH / 2, 180, totalH, 10);
+    bg.setScrollFactor(0);
+
+    eventProgressHUD.add(bg);
+
+    for (var i = 0; i < objectives.length; i++) {
+      var obj = objectives[i];
+      var y = -totalH / 2 + 15 + i * 22;
+      var statusIcon = obj.completed ? '✅' : '⬜';
+      var objText = this.add.text(-170, y, statusIcon + ' ' + obj.label, {
+        fontSize: '12px',
+        color: obj.completed ? '#4caf50' : '#ffffff'
+      }).setOrigin(0, 0.5).setScrollFactor(0);
+      eventProgressHUD.add(objText);
+
+      if (obj.current !== undefined && obj.target !== undefined) {
+        var progressText = this.add.text(-10, y, obj.current + '/' + obj.target, {
+          fontSize: '11px',
+          color: '#ffd700',
+          fontWeight: 'bold'
+        }).setOrigin(1, 0.5).setScrollFactor(0);
+        eventProgressHUD.add(progressText);
+      }
+    }
+
+    this.eventProgressHUD = eventProgressHUD;
+  };
+
+  proto.trackSeasonEvent = function(eventType, data) {
+    if (!this.seasonMode || !this.eventLevelMgr || !this.eventLevelMgr.isEventActive()) return;
+    this.eventLevelMgr.trackEvent(eventType, data);
+    if (Math.random() < 0.1) {
+      this.updateEventProgressHUD();
+    }
+  };
+
+  proto.getSeasonRunStats = function(win) {
+    var stats = {
+      score: this.scoreManager.getScore(),
+      time: this.scoreManager.getElapsedTime(),
+      distance: this.carPhysics ? Math.floor(this.carPhysics.car.x) : 0,
+      healthPercent: this.scoreManager.getHealthPercent(),
+      isComplete: win,
+      comboCount: this.scoreManager.comboCount || 0,
+      maxCombo: this.scoreManager.maxCombo || 0,
+      collectiblesCollected: this.scoreManager.totalCollected || 0,
+      collectiblesTotal: this.collectibles ? this.collectibles.totalCollectibles : 0,
+      damageTaken: this.scoreManager.totalDamageTaken || 0,
+      airTime: this.scoreManager.totalAirTime || 0,
+      branchExplored: this.terrain ? this.terrain.exploredBranches || [] : [],
+      starRating: win ? this.scoreManager.getStarRating() : null,
+      terrainDifficulty: this.level
+    };
+    return stats;
   };
 
   window.MountainRacer = MountainRacer;

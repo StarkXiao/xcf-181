@@ -55,6 +55,7 @@
       },
       scene: [
         MountainRacer.MenuScene,
+        MountainRacer.ChapterMapScene,
         MountainRacer.GarageScene,
         MountainRacer.GameScene,
         MountainRacer.GameOverScene

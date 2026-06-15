@@ -237,14 +237,13 @@
   proto.checkNodeUnlockRequirement = function(chapterId, node) {
     if (!node || !node.unlockRequirement) return true;
     var req = node.unlockRequirement;
-    var progress = this._dm.getData('season.nodeProgress', {});
 
     switch (req.type) {
       case 'node_clear':
-        var nodeProg = progress[req.nodeId];
+        var nodeProg = this.getNodeProgress(chapterId, req.nodeId);
         if (!nodeProg || !nodeProg.cleared) return false;
         if (req.minStars) {
-          var stars = this.getStarsForNode(req.nodeId);
+          var stars = this.getStarsForNode(chapterId, req.nodeId);
           if (stars < req.minStars) return false;
         }
         return true;
@@ -252,7 +251,7 @@
         if (!req.nodeIds || req.nodeIds.length === 0) return false;
         var anyCleared = false;
         for (var i = 0; i < req.nodeIds.length; i++) {
-          var np = progress[req.nodeIds[i]];
+          var np = this.getNodeProgress(chapterId, req.nodeIds[i]);
           if (np && np.cleared) {
             anyCleared = true;
             break;
@@ -262,7 +261,7 @@
         if (req.minStars) {
           var totalStars = 0;
           for (var j = 0; j < req.nodeIds.length; j++) {
-            totalStars += this.getStarsForNode(req.nodeIds[j]);
+            totalStars += this.getStarsForNode(chapterId, req.nodeIds[j]);
           }
           if (totalStars < req.minStars) return false;
         }
@@ -278,9 +277,10 @@
     }
   };
 
-  proto.getNodeProgress = function(nodeId) {
+  proto.getNodeProgress = function(chapterId, nodeId) {
     var progress = this._dm.getData('season.nodeProgress', {});
-    return progress[nodeId] || { cleared: false, attempts: 0, bestScore: 0, bestTime: null, stars: 0 };
+    var chapterProgress = progress[chapterId] || {};
+    return chapterProgress[nodeId] || { cleared: false, attempts: 0, bestScore: 0, bestTime: null, stars: 0, isComplete: false };
   };
 
   proto.updateNodeProgress = function(chapterId, nodeId, runResult) {
@@ -288,8 +288,10 @@
     var node = MountainRacer.SeasonConfig.getNode(chapterId, nodeId);
     if (!node) return { success: false, reason: 'invalid_node' };
 
-    var prevProg = progress[nodeId] || { cleared: false, attempts: 0, bestScore: 0, bestTime: null, stars: 0 };
+    if (!progress[chapterId]) progress[chapterId] = {};
+    var prevProg = progress[chapterId][nodeId] || { cleared: false, attempts: 0, bestScore: 0, bestTime: null, stars: 0, isComplete: false };
     var newProg = {
+      isComplete: prevProg.isComplete || !!runResult.isComplete,
       cleared: prevProg.cleared || !!runResult.isComplete,
       attempts: prevProg.attempts + 1,
       bestScore: Math.max(prevProg.bestScore, runResult.score || 0),
@@ -301,7 +303,7 @@
       lastRunAt: Date.now()
     };
 
-    progress[nodeId] = newProg;
+    progress[chapterId][nodeId] = newProg;
     this._setSeasonData('nodeProgress', progress);
 
     var playStats = this._dm.getData('season.playStats', {});
@@ -310,10 +312,14 @@
       playStats.totalWins = (playStats.totalWins || 0) + 1;
     }
     playStats.totalDistance = (playStats.totalDistance || 0) + (runResult.distance || 0);
-    playStats.bestScorePerNode[nodeId] = Math.max(playStats.bestScorePerNode[nodeId] || 0, runResult.score || 0);
+    if (!playStats.bestScorePerNode) playStats.bestScorePerNode = {};
+    if (!playStats.bestScorePerNode[chapterId]) playStats.bestScorePerNode[chapterId] = {};
+    playStats.bestScorePerNode[chapterId][nodeId] = Math.max(playStats.bestScorePerNode[chapterId][nodeId] || 0, runResult.score || 0);
+    if (!playStats.bestTimePerNode) playStats.bestTimePerNode = {};
+    if (!playStats.bestTimePerNode[chapterId]) playStats.bestTimePerNode[chapterId] = {};
     if (runResult.time) {
-      playStats.bestTimePerNode[nodeId] = playStats.bestTimePerNode[nodeId] === null ||
-        runResult.time < playStats.bestTimePerNode[nodeId] ? runResult.time : playStats.bestTimePerNode[nodeId];
+      playStats.bestTimePerNode[chapterId][nodeId] = playStats.bestTimePerNode[chapterId][nodeId] === null ||
+        runResult.time < playStats.bestTimePerNode[chapterId][nodeId] ? runResult.time : playStats.bestTimePerNode[chapterId][nodeId];
     }
     this._setSeasonData('playStats', playStats);
 
@@ -353,17 +359,21 @@
     }
   };
 
-  proto.getStarsForNode = function(nodeId) {
-    var progress = this.getNodeProgress(nodeId);
+  proto.getStarsForNode = function(chapterId, nodeId) {
+    var progress = this.getNodeProgress(chapterId, nodeId);
     return progress.stars || 0;
   };
 
   proto.getTotalStars = function() {
     var progress = this._dm.getData('season.nodeProgress', {});
     var total = 0;
-    var keys = Object.keys(progress);
-    for (var i = 0; i < keys.length; i++) {
-      total += (progress[keys[i]].stars || 0);
+    var chapterIds = Object.keys(progress);
+    for (var i = 0; i < chapterIds.length; i++) {
+      var chapterProgress = progress[chapterIds[i]];
+      var nodeIds = Object.keys(chapterProgress);
+      for (var j = 0; j < nodeIds.length; j++) {
+        total += (chapterProgress[nodeIds[j]].stars || 0);
+      }
     }
     return total;
   };
@@ -376,7 +386,7 @@
     var total = 0;
     for (var i = 0; i < nodes.length; i++) {
       total += (nodes[i].rewards && nodes[i].rewards.stars) || 3;
-      earned += this.getStarsForNode(nodes[i].id);
+      earned += this.getStarsForNode(chapterId, nodes[i].id);
     }
     return { total: total, earned: earned, maxPerNode: 3, percent: total > 0 ? Math.floor((earned / total) * 100) : 0 };
   };
@@ -388,7 +398,7 @@
     if (progress[chapterId] && progress[chapterId].completed) return true;
     var endNodes = MountainRacer.SeasonConfig.getChapterEndNodes(chapterId);
     for (var i = 0; i < endNodes.length; i++) {
-      var nodeProg = this.getNodeProgress(endNodes[i].id);
+      var nodeProg = this.getNodeProgress(chapterId, endNodes[i].id);
       if (nodeProg.cleared) {
         this._markChapterComplete(chapterId);
         return true;
@@ -483,6 +493,9 @@
     var chapters = [];
     var totalStars = 0;
     var totalMaxStars = 0;
+    var completedNodes = 0;
+    var totalNodes = 0;
+    var completedChapters = 0;
     for (var i = 0; i < season.chapters.length; i++) {
       var chId = season.chapters[i];
       var ch = MountainRacer.SeasonConfig.getChapter(chId);
@@ -490,12 +503,22 @@
       var chProg = this.getChapterProgress(chId);
       totalStars += chStars.earned;
       totalMaxStars += chStars.total;
+      if (ch && ch.nodes) {
+        totalNodes += ch.nodes.length;
+      }
+      var chCompleted = this.isChapterComplete(chId);
+      if (chCompleted) completedChapters++;
+      var nodeProgress = this._dm.getData('season.nodeProgress.' + chId, {});
+      for (var nid in nodeProgress) {
+        if (nodeProgress[nid] && nodeProgress[nid].isComplete) completedNodes++;
+      }
       chapters.push({
         id: chId,
         config: ch,
         stars: chStars,
         progress: chProg,
-        unlocked: this.isChapterUnlocked(chId)
+        unlocked: this.isChapterUnlocked(chId),
+        isComplete: chCompleted
       });
     }
     var levelProg = this.getSeasonLevelProgress();
@@ -503,11 +526,53 @@
       season: season,
       chapters: chapters,
       totalStars: totalStars,
-      totalMaxStars: totalMaxStars,
+      maxStars: totalMaxStars,
+      completedNodes: completedNodes,
+      totalNodes: totalNodes,
+      completedChapters: completedChapters,
       completionPercent: totalMaxStars > 0 ? Math.floor((totalStars / totalMaxStars) * 100) : 0,
       isComplete: this.isSeasonComplete(season.id),
       level: levelProg
     };
+  };
+
+  proto.getNextRecommendedNode = function() {
+    var season = this.getCurrentSeason();
+    if (!season) return null;
+    for (var i = 0; i < season.chapters.length; i++) {
+      var chId = season.chapters[i];
+      if (!this.isChapterUnlocked(chId)) continue;
+      var chapter = MountainRacer.SeasonConfig.getChapter(chId);
+      if (!chapter || !chapter.nodes) continue;
+      for (var j = 0; j < chapter.nodes.length; j++) {
+        var node = chapter.nodes[j];
+        if (!this.isNodeComplete(chId, node.id) && this.isNodeUnlocked(chId, node.id)) {
+          return {
+            chapter: chapter,
+            node: node,
+            chapterId: chId,
+            nodeId: node.id
+          };
+        }
+      }
+      if (!this.isChapterComplete(chId)) {
+        var startNode = MountainRacer.SeasonConfig.getChapterStartNode(chId);
+        if (startNode) {
+          return {
+            chapter: chapter,
+            node: startNode,
+            chapterId: chId,
+            nodeId: startNode.id
+          };
+        }
+      }
+    }
+    return null;
+  };
+
+  proto.isNodeComplete = function(chapterId, nodeId) {
+    var progress = this._dm.getData('season.nodeProgress.' + chapterId + '.' + nodeId, null);
+    return !!(progress && progress.isComplete);
   };
 
   proto.setRunContext = function(context) {
