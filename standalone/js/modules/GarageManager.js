@@ -304,18 +304,105 @@
 
   proto.calculatePerformanceRating = function(stats) {
     if (!stats) return 0;
-    var speedScore = (stats.maxSpeed / 1100) * 300;
-    var accelScore = (stats.acceleration / 650) * 250;
-    var brakeScore = (stats.brakePower / 900) * 150;
-    var gripScore = Math.min((stats.grip - 1) / 0.5, 1) * 150;
-    var healthScore = (stats.baseHealth / 170) * 100;
-    var nitroScore = (stats.nitroBoost * stats.nitroCount) * 100;
-    return Math.floor(speedScore + accelScore + brakeScore + gripScore + healthScore + nitroScore);
+
+    var BASE = { maxSpeed: 600, acceleration: 250, brakePower: 400, grip: 1.0, baseHealth: 100 };
+
+    var speedRatio = Math.max(0, (stats.maxSpeed - BASE.maxSpeed) / BASE.maxSpeed);
+    var accelRatio = Math.max(0, (stats.acceleration - BASE.acceleration) / BASE.acceleration);
+    var brakeRatio = Math.max(0, (stats.brakePower - BASE.brakePower) / BASE.brakePower);
+    var gripRatio = Math.max(0, (stats.grip - BASE.grip) / 0.5);
+    var healthRatio = Math.max(0, (stats.baseHealth - BASE.baseHealth) / BASE.baseHealth);
+
+    var speedScore = speedRatio * 250;
+    var accelScore = accelRatio * 200;
+    var brakeScore = brakeRatio * 120;
+    var gripScore = Math.min(gripRatio, 1) * 100;
+    var healthScore = healthRatio * 80;
+
+    var defenseScore = 0;
+    if (stats.damageReduction) defenseScore += stats.damageReduction * 80;
+    if (stats.rollResist) defenseScore += stats.rollResist * 60;
+    defenseScore = Math.min(defenseScore, 100);
+
+    var nitroScore = 0;
+    if (stats.nitroBoost > 0 && stats.nitroCount > 0) {
+      nitroScore = Math.min(stats.nitroBoost * stats.nitroCount * 50, 150);
+    }
+
+    var stabilityScore = 0;
+    if (stats.stability > 50) {
+      stabilityScore = Math.min((stats.stability - 50) / 100, 1) * 50;
+    }
+    if (stats.landingBonus > 0) {
+      stabilityScore += Math.min(stats.landingBonus * 30, 50);
+    }
+
+    var total = speedScore + accelScore + brakeScore + gripScore +
+                healthScore + defenseScore + nitroScore + stabilityScore;
+    return Math.floor(Math.max(0, total));
+  };
+
+  proto.getPhysicsMapping = function() {
+    return {
+      maxSpeed: 'CarPhysics.maxSpeed',
+      acceleration: 'CarPhysics.acceleration',
+      brakePower: 'CarPhysics.brakeAcceleration',
+      grip: 'CarPhysics.friction (via gripMultiplier)',
+      baseHealth: 'ScoreManager.maxHealth',
+      damageReduction: 'CarPhysics.getDamageMultiplier()',
+      rollResist: 'CarPhysics.rolloverAngleThreshold/GracePeriod',
+      suspensionStiffness: 'CarPhysics.suspensionStiffness',
+      suspensionDamping: 'CarPhysics.suspensionDamping',
+      landingBonus: 'CarPhysics.landingBonus (bounce dampen)',
+      nitroBoost: 'CarPhysics.nitroBoost',
+      nitroCount: 'CarPhysics.nitroCount',
+      nitroDuration: 'CarPhysics.nitroDuration'
+    };
   };
 
   proto.getCurrentPerformanceRating = function() {
     var stats = this.calculateCarStats();
     return stats ? stats.performanceRating : 0;
+  };
+
+  proto.verifyConsistency = function(carPhysics) {
+    var stats = this.calculateCarStats();
+    var result = {
+      garagePower: stats ? stats.performanceRating : 0,
+      physicsPower: carPhysics && carPhysics.appliedStats ? carPhysics.appliedStats.performanceRating : null,
+      powerMatch: false,
+      fieldMatches: {},
+      errors: []
+    };
+
+    if (!stats) {
+      result.errors.push('calculateCarStats returned null');
+      return result;
+    }
+
+    if (carPhysics && carPhysics.appliedStats) {
+      result.powerMatch = result.garagePower === result.physicsPower;
+      if (!result.powerMatch) {
+        result.errors.push('Power mismatch: garage=' + result.garagePower + ', physics=' + result.physicsPower);
+      }
+
+      var fields = ['maxSpeed', 'acceleration', 'brakePower', 'grip', 'baseHealth',
+                    'damageReduction', 'rollResist', 'suspensionStiffness', 'suspensionDamping',
+                    'nitroBoost', 'nitroCount', 'nitroDuration', 'landingBonus'];
+      for (var i = 0; i < fields.length; i++) {
+        var f = fields[i];
+        var garageVal = stats[f];
+        var physicsVal = carPhysics.appliedStats[f];
+        result.fieldMatches[f] = garageVal === physicsVal;
+        if (!result.fieldMatches[f]) {
+          result.errors.push('Field mismatch: ' + f + ' garage=' + garageVal + ', physics=' + physicsVal);
+        }
+      }
+    } else {
+      result.errors.push('carPhysics.appliedStats not available');
+    }
+
+    return result;
   };
 
   proto.getLevelRequirement = function(level) {

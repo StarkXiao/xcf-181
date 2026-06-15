@@ -13,9 +13,6 @@
     this.baseAcceleration = 250;
     this.baseBrakeAcceleration = 400;
     this.baseFriction = 0.98;
-    this.baseGrip = 1.0;
-    this.baseArmor = 100;
-    this.baseNitroPower = 1.5;
     this.airFriction = 0.995;
     this.gravity = 900;
 
@@ -23,9 +20,6 @@
     this.acceleration = this.baseAcceleration;
     this.brakeAcceleration = this.baseBrakeAcceleration;
     this.friction = this.baseFriction;
-    this.gripMultiplier = this.baseGrip;
-    this.armor = this.baseArmor;
-    this.nitroPower = this.baseNitroPower;
 
     this.isGrounded = false;
     this.wheelRadius = 12;
@@ -63,7 +57,20 @@
     this.rolloverCooldownDuration = 3.0;
     this.rolloverCount = 0;
 
+    this.gripMultiplier = 1.0;
+    this.damageReduction = 0;
+    this.rollResist = 0;
+    this.landingBonus = 0;
+    this.weightBonus = 0;
+    this.nitroBoost = 0;
+    this.nitroDuration = 0;
+    this.nitroCount = 0;
+    this.nitroActive = false;
+    this.nitroTimer = 0;
+    this.nitroUsed = 0;
+
     this.appliedStats = null;
+    this.garageApplied = false;
   };
 
   var proto = MountainRacer.CarPhysics.prototype;
@@ -71,39 +78,110 @@
   proto.applyGarageMods = function() {
     try {
       var dataManager = this.scene.dataManager;
-      if (dataManager) {
-        var garageMgr = dataManager.getGarageManager();
-        if (garageMgr) {
-          var currentCar = garageMgr.getSelectedCarId();
-          var carStats = garageMgr.calculateCarStats(currentCar);
-          this.appliedStats = carStats;
-
-          this.maxSpeed = carStats.maxSpeed || this.baseMaxSpeed;
-          this.acceleration = carStats.acceleration || this.baseAcceleration;
-          this.brakeAcceleration = carStats.braking || this.baseBrakeAcceleration;
-          this.gripMultiplier = (carStats.grip || 100) / 100;
-          this.armor = carStats.health || this.baseArmor;
-          this.nitroPower = 1.5 + ((carStats.nitro || 50) / 100);
-
-          if (carStats.suspensionStiffness !== undefined) {
-            this.suspensionStiffness = 0.3 + (carStats.suspensionStiffness / 200);
-          }
-          if (carStats.suspensionDamping !== undefined) {
-            this.suspensionDamping = 0.1 + (carStats.suspensionDamping / 500);
-          }
-        }
+      if (!dataManager) {
+        console.warn('[CarPhysics] applyGarageMods: scene.dataManager not available');
+        return;
       }
+
+      var garageMgr = dataManager.getGarageManager();
+      if (!garageMgr) {
+        console.warn('[CarPhysics] applyGarageMods: garageMgr not available');
+        return;
+      }
+
+      var currentCar = garageMgr.getCurrentCarId();
+      var carStats = garageMgr.calculateCarStats(currentCar);
+      if (!carStats) {
+        console.warn('[CarPhysics] applyGarageMods: carStats is null for car', currentCar);
+        return;
+      }
+
+      this.appliedStats = carStats;
+      this.garageApplied = true;
+
+      var oldSpeed = this.maxSpeed;
+      var oldAccel = this.acceleration;
+      var oldBrake = this.brakeAcceleration;
+
+      this.maxSpeed = carStats.maxSpeed || this.baseMaxSpeed;
+      this.acceleration = carStats.acceleration || this.baseAcceleration;
+      this.brakeAcceleration = carStats.brakePower || this.baseBrakeAcceleration;
+
+      this.gripMultiplier = carStats.grip || 1.0;
+      this.friction = this.baseFriction + (this.gripMultiplier - 1) * 0.02;
+
+      this.suspensionStiffness = carStats.suspensionStiffness !== undefined ? carStats.suspensionStiffness : 0.5;
+      this.suspensionDamping = carStats.suspensionDamping !== undefined ? carStats.suspensionDamping : 0.2;
+
+      this.damageReduction = carStats.damageReduction || 0;
+      this.rollResist = carStats.rollResist || 0;
+      this.landingBonus = carStats.landingBonus || 0;
+      this.weightBonus = carStats.weight ? (carStats.weight - 100) : 0;
+
+      this.nitroBoost = carStats.nitroBoost || 0;
+      this.nitroDuration = carStats.nitroDuration || 0;
+      this.nitroCount = carStats.nitroCount || 0;
+
+      if (this.weightBonus > 0) {
+        this.gravity = 900 + this.weightBonus * 3;
+      }
+
+      var dmgMult = this.getDamageMultiplier();
+
+      console.log('%c[CarPhysics] Garage mods applied!', 'background:#4caf50;color:white;padding:4px 8px;border-radius:4px;');
+      console.log('  Car:', currentCar, '| Power:', carStats.performanceRating);
+      console.log('  Speed:', oldSpeed, '→', this.maxSpeed, '| Accel:', oldAccel, '→', this.acceleration, '| Brake:', oldBrake, '→', this.brakeAcceleration);
+      console.log('  Grip:', this.gripMultiplier.toFixed(2), '| Friction:', this.friction.toFixed(4), '| DamageMult:', dmgMult.toFixed(2));
+      console.log('  Nitro: boost=' + this.nitroBoost + ', count=' + this.nitroCount + ', duration=' + this.nitroDuration);
+      console.log('  Suspension: stiff=' + this.suspensionStiffness.toFixed(2) + ', damp=' + this.suspensionDamping.toFixed(2));
     } catch (e) {
-      console.warn('[CarPhysics] applyGarageMods error:', e);
+      console.error('[CarPhysics] applyGarageMods error:', e);
     }
   };
 
-  proto.getEffectiveFriction = function() {
-    return this.baseFriction + (this.gripMultiplier - 1) * 0.01;
+  proto.getDamageMultiplier = function() {
+    var armorFactor = 1.0;
+    if (this.appliedStats && this.appliedStats.baseHealth) {
+      var baseHealth = this.appliedStats.baseHealth;
+      if (baseHealth > 100) {
+        armorFactor = Math.max(0.4, 1 - (baseHealth - 100) / 300);
+      }
+    }
+    var drFactor = Math.max(0.2, 1 - this.damageReduction);
+    return Math.max(0.2, armorFactor * drFactor);
   };
 
-  proto.getDamageMultiplier = function() {
-    return Math.max(0.3, 1 - (this.armor - 100) / 300);
+  proto.getRolloverResistance = function() {
+    return this.rollResist;
+  };
+
+  proto.getHealthFromGarage = function() {
+    if (this.appliedStats && this.appliedStats.baseHealth) {
+      return this.appliedStats.baseHealth;
+    }
+    return 100;
+  };
+
+  proto.activateNitro = function() {
+    if (this.nitroUsed >= this.nitroCount || this.nitroActive) return false;
+    this.nitroActive = true;
+    this.nitroTimer = this.nitroDuration;
+    this.nitroUsed++;
+    return true;
+  };
+
+  proto.updateNitro = function(dt) {
+    if (!this.nitroActive) return;
+    this.nitroTimer -= dt;
+    if (this.nitroTimer <= 0) {
+      this.nitroActive = false;
+      this.nitroTimer = 0;
+    }
+  };
+
+  proto.getNitroSpeedBoost = function() {
+    if (!this.nitroActive) return 1.0;
+    return 1.0 + this.nitroBoost;
   };
 
   proto.create = function(x, y) {
@@ -191,6 +269,8 @@
     var carX = this.car.x;
     var carY = this.car.y;
 
+    this.updateNitro(dt);
+
     var cosAngle = Math.cos(this.angle);
     var sinAngle = Math.sin(this.angle);
 
@@ -224,7 +304,11 @@
 
         var targetSuspension = -Math.min(penetration, this.suspensionLength * 2);
         var springForce = (targetSuspension - wheel.suspensionOffset) * this.suspensionStiffness;
-        wheel.suspensionOffset += springForce;
+        var dampForce = 0;
+        if (this.suspensionDamping > 0) {
+          dampForce = -wheel.suspensionOffset * this.suspensionDamping * 10;
+        }
+        wheel.suspensionOffset += (springForce + dampForce) * dt * 60;
         wheel.suspensionOffset = Math.max(-this.suspensionLength * 2, Math.min(this.suspensionLength * 0.5, wheel.suspensionOffset));
 
         var liftForce = penetration * 15;
@@ -233,8 +317,10 @@
         var terrainAngle = terrain.getAngle(wheel.worldX);
         var normalVel = this.vx * Math.sin(terrainAngle) + this.vy * Math.cos(terrainAngle);
 
-        if (normalVel > 200) {
-          this.vy = 0;
+        var bounceThreshold = 200 + this.landingBonus * 200;
+        if (normalVel > bounceThreshold) {
+          var bounceDampen = 1 - this.landingBonus * 0.3;
+          this.vy *= Math.max(0.2, bounceDampen);
           this.bounceTimer = 0.1;
           this.createBounceParticles(wheel.worldX, terrainY);
         }
@@ -263,9 +349,13 @@
       var forwardDirX = Math.cos(terrainAngle2);
       var forwardDirY = Math.sin(terrainAngle2);
 
+      var accelForce = this.acceleration;
+      if (this.nitroActive) {
+        accelForce *= this.getNitroSpeedBoost();
+      }
       if (input.accelerate) {
-        this.vx += forwardDirX * this.acceleration * dt;
-        this.vy += forwardDirY * this.acceleration * dt;
+        this.vx += forwardDirX * accelForce * dt;
+        this.vy += forwardDirY * accelForce * dt;
       }
       if (input.brake) {
         this.vx -= forwardDirX * this.brakeAcceleration * dt;
@@ -283,9 +373,10 @@
       this.vy *= this.airFriction;
     }
 
+    var effectiveMaxSpeed = this.maxSpeed * this.getNitroSpeedBoost();
     var speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-    if (speed > this.maxSpeed) {
-      var scale = this.maxSpeed / speed;
+    if (speed > effectiveMaxSpeed) {
+      var scale = effectiveMaxSpeed / speed;
       this.vx *= scale;
       this.vy *= scale;
     }
@@ -316,6 +407,9 @@
   proto.updateRollover = function(dt, terrain) {
     this.rolloverCooldown = Math.max(0, this.rolloverCooldown - dt);
 
+    var effectiveThreshold = this.rolloverAngleThreshold + this.rollResist * 0.4;
+    var effectiveGracePeriod = this.rolloverGracePeriod + this.rollResist * 0.5;
+
     if (this.rolloverCorrectionTimer > 0) {
       this.rolloverCorrectionTimer -= dt;
       var normal = terrain.getNormal(this.car.x);
@@ -343,7 +437,7 @@
 
     if (this.isGrounded) {
       var absAngle = Math.abs(Phaser.Math.Angle.Wrap(this.angle));
-      if (absAngle > this.rolloverAngleThreshold) {
+      if (absAngle > effectiveThreshold) {
         if (!this.isRollover) {
           this.isRollover = true;
           this.rolloverTimer = 0;
@@ -356,7 +450,7 @@
 
         this.rolloverTimer += dt;
 
-        if (this.rolloverTimer >= this.rolloverGracePeriod) {
+        if (this.rolloverTimer >= effectiveGracePeriod) {
           this.rolloverCorrectionTimer = this.rolloverCorrectionDuration;
           this.rolloverTimer = 0;
         }

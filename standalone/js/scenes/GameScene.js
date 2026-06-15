@@ -36,6 +36,31 @@
     this.carPhysics = new MountainRacer.CarPhysics(this);
     this.carPhysics.create(startX, startY);
 
+    try {
+      var garageMgr = this.dataManager.getGarageManager();
+      if (garageMgr && this.carPhysics.garageApplied && this.carPhysics.appliedStats) {
+        var garagePower = garageMgr.getCurrentPerformanceRating();
+        var physicsPower = this.carPhysics.appliedStats.performanceRating;
+        var levelCheck = garageMgr.checkLevelEntry(this.level);
+
+        console.log('%c[GameScene] Garage → Physics Power Verification', 'background:#2196f3;color:white;padding:4px 8px;border-radius:4px;');
+        console.log('  GarageMgr power:', garagePower);
+        console.log('  CarPhysics power:', physicsPower);
+        console.log('  Match:', garagePower === physicsPower ? '✅ YES' : '❌ NO');
+        console.log('  Level', this.level, 'entry:', levelCheck.canEnter ? '✅ ALLOWED' : '❌ DENIED', levelCheck.reason || '');
+        console.log('  Required power:', levelCheck.requiredPower || 0, '| Current:', levelCheck.currentPower || garagePower);
+
+        if (garagePower !== physicsPower) {
+          console.warn('[GameScene] ⚠️  Power mismatch! Recalculating...');
+          this.carPhysics.applyGarageMods();
+        }
+      } else {
+        console.warn('[GameScene] Garage mods not applied to physics!');
+      }
+    } catch (e) {
+      console.warn('[GameScene] Garage verification error:', e);
+    }
+
     this.obstacles = new MountainRacer.Obstacles(this, this.terrain, this.terrain.config);
     this.dangerZones = new MountainRacer.DangerZones(this, this.terrain, this.terrain.config);
     this.collectibles = new MountainRacer.Collectibles(this, this.terrain, this.terrain.config);

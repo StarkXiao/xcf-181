@@ -9,9 +9,21 @@
     this.highScoreMgr = this.dataManager.getHighScoreManager();
     this.unlockMgr = this.dataManager.getUnlockManager();
     this.settingsMgr = this.dataManager.getSettingsManager();
+
+    var garageHealth = 100;
+    try {
+      var garageMgr = this.dataManager.getGarageManager();
+      if (garageMgr) {
+        var stats = garageMgr.calculateCarStats();
+        if (stats && stats.baseHealth) {
+          garageHealth = stats.baseHealth;
+        }
+      }
+    } catch (e) {}
+
     this.score = 0;
-    this.health = 100;
-    this.maxHealth = 100;
+    this.health = garageHealth;
+    this.maxHealth = garageHealth;
     this.startTime = Date.now();
     this.lastDistanceX = 0;
     this.distance = 0;
@@ -329,8 +341,13 @@
   };
 
   proto.takeDamage = function(amount) {
-    this.health = Math.max(0, this.health - amount);
-    this.damageTaken += amount;
+    var dmgMult = 1.0;
+    if (this.scene && this.scene.carPhysics) {
+      dmgMult = this.scene.carPhysics.getDamageMultiplier();
+    }
+    var effectiveDamage = Math.ceil(amount * dmgMult);
+    this.health = Math.max(0, this.health - effectiveDamage);
+    this.damageTaken += effectiveDamage;
     this.perfectRun = false;
     if (this.comboCount > 0) {
       this.breakCombo('damage');

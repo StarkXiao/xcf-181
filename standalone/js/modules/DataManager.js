@@ -65,8 +65,8 @@
       },
       levelRequirements: {
         level_1: { minPower: 0, coinsRequired: 0 },
-        level_2: { minPower: 150, coinsRequired: 0 },
-        level_3: { minPower: 350, coinsRequired: 0 }
+        level_2: { minPower: 80, coinsRequired: 0 },
+        level_3: { minPower: 200, coinsRequired: 0 }
       }
     }
   };

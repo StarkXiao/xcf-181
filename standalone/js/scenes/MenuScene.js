@@ -454,14 +454,15 @@
     var self = this;
     btnContainer.on('pointerdown', function() {
       self.tweens.add({
-      targets: [overlay, panel],
-      alpha: 0,
-      duration: 200,
-      onComplete: function() {
-        overlay.destroy();
-        panel.destroy();
-        self.scene.start('GarageScene');
-      }
+        targets: [overlay, panel],
+        alpha: 0,
+        duration: 200,
+        onComplete: function() {
+          overlay.destroy();
+          panel.destroy();
+          self.scene.start('GarageScene');
+        }
+      });
     });
     btnContainer.on('pointerover', function() { btnGfx.clear(); btnGfx.fillStyle(0x6ab0ff, 0.95); btnGfx.fillRoundedRect(-80, 50, 160, 40, 10); });
     btnContainer.on('pointerout', function() { btnGfx.clear(); btnGfx.fillStyle(0x4a90d9, 0.95); btnGfx.fillRoundedRect(-80, 50, 160, 40, 10); });
