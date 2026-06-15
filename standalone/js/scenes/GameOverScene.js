@@ -27,6 +27,7 @@
     this.replayComparison = data.replayComparison || null;
     this.starRating = data.starRating || null;
     this.replayAnalysis = data.replayAnalysis || null;
+    this.coinReward = data.coinReward || 0;
     this.activeTab = 'summary';
     this.highScoreAnimationPlayed = false;
     this.tabContentElements = [];
@@ -96,7 +97,8 @@
   proto.createResultPanel = function(width, height) {
     var panelW = 420;
     var needStarPanel = this.win && this.starRating;
-    var panelH = needStarPanel ? 1060 : (this.win && this.detailedStats ? 860 : 430);
+    var coinExtraH = (this.coinReward > 0) ? 70 : 0;
+    var panelH = needStarPanel ? (1060 + coinExtraH) : (this.win && this.detailedStats ? (860 + coinExtraH) : (430 + coinExtraH));
 
     var shadow = this.add.graphics();
     shadow.fillStyle(0x000000, 0.4);
@@ -156,6 +158,51 @@
         ease: 'Sine.easeInOut',
         yoyo: true,
         repeat: -1
+      });
+    }
+
+    if (this.coinReward > 0) {
+      var coinPanelY = (isNewRecord ? recordY : height / 2 - panelH / 2 + 220) + 50;
+      if (needStarPanel) {
+        coinPanelY += 70;
+      }
+
+      var coinBg = this.add.graphics();
+      coinBg.fillStyle(0xffeb3b, 0.12);
+      coinBg.fillRoundedRect(width / 2 - 140, coinPanelY - 25, 280, 50, 12);
+      coinBg.lineStyle(2.5, 0xf9a825, 1);
+      coinBg.strokeRoundedRect(width / 2 - 140, coinPanelY - 25, 280, 50, 12);
+
+      var coinIcon = this.add.text(width / 2 - 100, coinPanelY, '💰', {
+        fontSize: '28px'
+      }).setOrigin(0.5);
+
+      var coinText = this.add.text(width / 2 + 10, coinPanelY, '本局获得金币: +' + this.coinReward, {
+        fontSize: '18px',
+        fontWeight: 'bold',
+        color: '#f57f17'
+      }).setOrigin(0.5);
+
+      var coinContainer = this.add.container(0, 0, [coinBg, coinIcon, coinText]);
+      coinContainer.setAlpha(0);
+      coinContainer.setScale(0.8);
+      this.tweens.add({
+        targets: coinContainer,
+        alpha: 1,
+        scale: 1,
+        duration: 600,
+        delay: 400,
+        ease: 'Back.out'
+      });
+
+      this.tweens.add({
+        targets: coinIcon,
+        scale: { from: 1, to: 1.15 },
+        duration: 350,
+        delay: 1100,
+        ease: 'Sine.easeInOut',
+        yoyo: true,
+        repeat: 2
       });
     }
   };

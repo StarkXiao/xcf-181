@@ -3364,6 +3364,18 @@
     var starRating = win ? this.scoreManager.getStarRating() : null;
     var replayAnalysis = this.scoreManager.getReplayAnalysis();
 
+    var coinReward = 0;
+    try {
+      if (this.dataManager) {
+        var garageMgr = this.dataManager.getGarageManager();
+        if (garageMgr) {
+          coinReward = garageMgr.applyCoinsFromRun(detailedStats);
+        }
+      }
+    } catch (e) {
+      console.warn('[GameScene] applyCoinsFromRun error:', e);
+    }
+
     this.time.delayedCall(600, function() {
       self.scene.start('GameOverScene', {
         level: self.level,
@@ -3381,7 +3393,8 @@
         previousBestStats: previousBest,
         replayComparison: replayComparison,
         starRating: starRating,
-        replayAnalysis: replayAnalysis
+        replayAnalysis: replayAnalysis,
+        coinReward: coinReward
       });
     });
   };

@@ -9,12 +9,23 @@
     this.wheelBL = null;
     this.wheelBR = null;
 
-    this.maxSpeed = 600;
-    this.acceleration = 250;
-    this.brakeAcceleration = 400;
-    this.friction = 0.98;
+    this.baseMaxSpeed = 600;
+    this.baseAcceleration = 250;
+    this.baseBrakeAcceleration = 400;
+    this.baseFriction = 0.98;
+    this.baseGrip = 1.0;
+    this.baseArmor = 100;
+    this.baseNitroPower = 1.5;
     this.airFriction = 0.995;
     this.gravity = 900;
+
+    this.maxSpeed = this.baseMaxSpeed;
+    this.acceleration = this.baseAcceleration;
+    this.brakeAcceleration = this.baseBrakeAcceleration;
+    this.friction = this.baseFriction;
+    this.gripMultiplier = this.baseGrip;
+    this.armor = this.baseArmor;
+    this.nitroPower = this.baseNitroPower;
 
     this.isGrounded = false;
     this.wheelRadius = 12;
@@ -51,11 +62,52 @@
     this.rolloverCorrectionDuration = 0.4;
     this.rolloverCooldownDuration = 3.0;
     this.rolloverCount = 0;
+
+    this.appliedStats = null;
   };
 
   var proto = MountainRacer.CarPhysics.prototype;
 
+  proto.applyGarageMods = function() {
+    try {
+      var dataManager = this.scene.dataManager;
+      if (dataManager) {
+        var garageMgr = dataManager.getGarageManager();
+        if (garageMgr) {
+          var currentCar = garageMgr.getSelectedCarId();
+          var carStats = garageMgr.calculateCarStats(currentCar);
+          this.appliedStats = carStats;
+
+          this.maxSpeed = carStats.maxSpeed || this.baseMaxSpeed;
+          this.acceleration = carStats.acceleration || this.baseAcceleration;
+          this.brakeAcceleration = carStats.braking || this.baseBrakeAcceleration;
+          this.gripMultiplier = (carStats.grip || 100) / 100;
+          this.armor = carStats.health || this.baseArmor;
+          this.nitroPower = 1.5 + ((carStats.nitro || 50) / 100);
+
+          if (carStats.suspensionStiffness !== undefined) {
+            this.suspensionStiffness = 0.3 + (carStats.suspensionStiffness / 200);
+          }
+          if (carStats.suspensionDamping !== undefined) {
+            this.suspensionDamping = 0.1 + (carStats.suspensionDamping / 500);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[CarPhysics] applyGarageMods error:', e);
+    }
+  };
+
+  proto.getEffectiveFriction = function() {
+    return this.baseFriction + (this.gripMultiplier - 1) * 0.01;
+  };
+
+  proto.getDamageMultiplier = function() {
+    return Math.max(0.3, 1 - (this.armor - 100) / 300);
+  };
+
   proto.create = function(x, y) {
+    this.applyGarageMods();
     this.car = this.scene.add.container(x, y);
     this.car.setDepth(50);
 

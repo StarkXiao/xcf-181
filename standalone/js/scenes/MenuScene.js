@@ -15,16 +15,19 @@
     this.dataManager.init();
     this.highScoreMgr = this.dataManager.getHighScoreManager();
     this.unlockMgr = this.dataManager.getUnlockManager();
+    this.garageMgr = this.dataManager.getGarageManager();
 
     var width = this.scale.width;
     var height = this.scale.height;
 
     this.createBackground(width, height);
     this.createTitle(width, height);
+    this.createTopBar(width, height);
     this.createChapterProgress(width, height);
     this.createLevelCards(width, height);
     this.createInstructions(width, height);
     this.createControlsHint(width, height);
+    this.createGarageButton(width, height);
   };
 
   proto.createBackground = function(width, height) {
@@ -125,8 +128,90 @@
     }).setOrigin(0.5);
   };
 
+  proto.createTopBar = function(width, height) {
+    var coins = this.garageMgr.getCoins();
+    var power = this.garageMgr.getCurrentPerformanceRating();
+
+    var coinsContainer = this.add.container(width - 30, 50);
+    var coinBg = this.add.graphics();
+    coinBg.fillStyle(0xffd700, 0.25);
+    coinBg.lineStyle(2, 0xffd700, 0.9);
+    coinBg.fillRoundedRect(-130, -20, 130, 40, 10);
+    coinBg.strokeRoundedRect(-130, -20, 130, 40, 10);
+    this.coinsText = this.add.text(-8, 0, '💰 ' + coins, {
+      fontSize: '18px',
+      fontWeight: 'bold',
+      color: '#ffd700'
+    }).setOrigin(0, 0.5);
+    coinsContainer.add([coinBg, this.coinsText]);
+
+    var powerContainer = this.add.container(30, 50);
+    var powerBg = this.add.graphics();
+    powerBg.fillStyle(0x4a90d9, 0.25);
+    powerBg.lineStyle(2, 0x4a90d9, 0.9);
+    powerBg.fillRoundedRect(0, -20, 150, 40, 10);
+    powerBg.strokeRoundedRect(0, -20, 150, 40, 10);
+    this.powerText = this.add.text(75, 0, '⚡ 战力: ' + power, {
+      fontSize: '16px',
+      fontWeight: 'bold',
+      color: '#4a90d9'
+    }).setOrigin(0.5);
+    powerContainer.add([powerBg, this.powerText]);
+  };
+
+  proto.createGarageButton = function(width, height) {
+    var btnX = width / 2;
+    var btnY = 540;
+    var btnW = 200;
+    var btnH = 50;
+
+    var container = this.add.container(btnX, btnY);
+    container.setSize(btnW, btnH);
+
+    var gfx = this.add.graphics();
+    gfx.fillStyle(0x4a90d9, 0.95);
+    gfx.fillRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 14);
+    gfx.lineGradientStyle(3, 0x6ab0ff, 0x6ab0ff, 0x4a90d9, 0x4a90d9, 1);
+    gfx.strokeRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 14);
+
+    var txt = this.add.text(0, 0, '🔧 前往改装工坊', {
+      fontSize: '18px',
+      fontWeight: 'bold',
+      color: '#ffffff',
+      stroke: '#1a3a6a',
+      strokeThickness: 3
+    }).setOrigin(0.5);
+
+    container.add([gfx, txt]);
+
+    var self = this;
+    container.setInteractive(
+      new Phaser.Geom.Rectangle(-btnW / 2, -btnH / 2, btnW, btnH),
+      Phaser.Geom.Rectangle.Contains
+    );
+    container.on('pointerover', function() {
+      self.tweens.add({ targets: this, scale: 1.06, duration: 150, ease: 'Power2' });
+    });
+    container.on('pointerout', function() {
+      self.tweens.add({ targets: this, scale: 1.0, duration: 150, ease: 'Power2' });
+    });
+    container.on('pointerdown', function() {
+      self.tweens.add({
+        targets: this,
+        scale: 0.95,
+        duration: 80,
+        yoyo: true,
+        onComplete: function() {
+          self.scene.start('GarageScene');
+        }
+      });
+    });
+
+    this.garageButton = container;
+  };
+
   proto.createLevelCards = function(width, height) {
-    var cardY = 250;
+    var cardY = 290;
     var cardWidth = 210;
     var cardHeight = 160;
     var spacing = 30;
@@ -196,17 +281,64 @@
         container.add(hsText);
       }
 
-      var unlocked = this.isLevelUnlocked(level);
+      var entryCheck = this.garageMgr.checkLevelEntry(level);
+      var unlocked = entryCheck.canEnter;
+      var lockReason = entryCheck.reason;
+
       if (!unlocked) {
         var lockGfx = this.add.graphics();
-        lockGfx.fillStyle(0x000000, 0.6);
+        lockGfx.fillStyle(0x000000, 0.65);
         lockGfx.fillRoundedRect(-cardWidth / 2, -cardHeight / 2, cardWidth, cardHeight, 16);
-        var lockText = this.add.text(0, 0, '🔒 未解锁', {
-          fontSize: '22px',
+
+        var lockMsg = '🔒 未解锁';
+        if (lockReason === 'insufficient_power') {
+          lockMsg = '⚡ 战力不足';
+        } else if (lockReason === 'insufficient_coins') {
+          lockMsg = '💰 金币不足';
+        }
+        var lockText = this.add.text(0, -10, lockMsg, {
+          fontSize: '18px',
           fontWeight: 'bold',
           color: '#ffffff'
         }).setOrigin(0.5);
-        container.add([lockGfx, lockText]);
+
+        var hintText = null;
+        if (lockReason === 'insufficient_power') {
+          hintText = this.add.text(0, 20,
+            '需 ' + entryCheck.requiredPower + ' 战力',
+            {
+              fontSize: '12px',
+              color: '#ffcc00',
+              align: 'center'
+            }
+          ).setOrigin(0.5);
+        } else if (lockReason === 'level_not_unlocked') {
+          hintText = this.add.text(0, 20, '先通关上一关', {
+            fontSize: '12px',
+            color: '#cccccc',
+            align: 'center'
+          }).setOrigin(0.5);
+        }
+        if (hintText) {
+          container.add([lockGfx, lockText, hintText]);
+        } else {
+          container.add([lockGfx, lockText]);
+        }
+      }
+
+      if (unlocked) {
+        var req = this.garageMgr.getLevelRequirement(level);
+        if (req.minPower > 0) {
+          var reqText = this.add.text(0, cardHeight / 2 - 5,
+            '⚡需战力: ' + req.minPower,
+            {
+              fontSize: '11px',
+              color: '#4a90d9',
+              fontWeight: 'bold'
+            }
+          ).setOrigin(0.5);
+          container.add(reqText);
+        }
       }
 
       if (unlocked) {
@@ -236,6 +368,11 @@
 
         container.on('pointerdown', (function(lvl) {
           return function() {
+            var check = self.garageMgr.checkLevelEntry(lvl);
+            if (!check.canEnter) {
+              self.showLevelDenied(check);
+              return;
+            }
             self.tweens.add({
               targets: this,
               scale: 0.95,
@@ -251,6 +388,114 @@
 
       this.levelCards.push(container);
     }
+  };
+
+  proto.showLevelDenied = function(check) {
+    var width = this.scale.width;
+    var height = this.scale.height;
+    var msg = '';
+    if (check.reason === 'insufficient_power') {
+      msg = '⚡ 战力不足\n当前: ' + check.currentPower + ' / 需要: ' + check.requiredPower;
+    } else if (check.reason === 'insufficient_coins') {
+      msg = '💰 金币不足\n当前: ' + check.currentCoins + ' / 需要: ' + check.requiredCoins;
+    } else {
+      msg = '🔒 关卡未解锁';
+    }
+
+    var overlay = this.add.graphics();
+    overlay.fillStyle(0x000000, 0.5);
+    overlay.fillRect(0, 0, width, height);
+    overlay.setDepth(9000);
+    overlay.setAlpha(0);
+
+    var panel = this.add.container(width / 2, height / 2);
+    panel.setDepth(9001);
+    panel.setAlpha(0);
+
+    var panelBg = this.add.graphics();
+    panelBg.fillStyle(0x2a2a4a, 0.98);
+    panelBg.fillRoundedRect(-180, -100, 360, 200, 16);
+    panelBg.lineStyle(3, 0xf44336, 0.9);
+    panelBg.strokeRoundedRect(-180, -100, 360, 200, 16);
+
+    var title = this.add.text(0, -50, '⛔ 无法进入', {
+      fontSize: '26px',
+      fontWeight: 'bold',
+      color: '#f44336',
+      align: 'center'
+    }).setOrigin(0.5);
+
+    var msgText = this.add.text(0, 0, msg, {
+      fontSize: '18px',
+      color: '#ffffff',
+      align: 'center',
+      wordWrap: { width: 320 }
+    }).setOrigin(0.5);
+
+    var btnGfx = this.add.graphics();
+    btnGfx.fillStyle(0x4a90d9, 0.95);
+    btnGfx.fillRoundedRect(-80, 50, 160, 40, 10);
+    var btnText = this.add.text(0, 70, '前往工坊升级', {
+      fontSize: '16px',
+      fontWeight: 'bold',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+
+    var btnContainer = this.add.container(0, 0);
+    btnContainer.add([btnGfx, btnText]);
+    btnContainer.setSize(160, 40);
+    btnContainer.setInteractive(
+      new Phaser.Geom.Rectangle(-80, 50, 160, 40),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    panel.add([panelBg, title, msgText, btnContainer]);
+
+    var self = this;
+    btnContainer.on('pointerdown', function() {
+      self.tweens.add({
+      targets: [overlay, panel],
+      alpha: 0,
+      duration: 200,
+      onComplete: function() {
+        overlay.destroy();
+        panel.destroy();
+        self.scene.start('GarageScene');
+      }
+    });
+    btnContainer.on('pointerover', function() { btnGfx.clear(); btnGfx.fillStyle(0x6ab0ff, 0.95); btnGfx.fillRoundedRect(-80, 50, 160, 40, 10); });
+    btnContainer.on('pointerout', function() { btnGfx.clear(); btnGfx.fillStyle(0x4a90d9, 0.95); btnGfx.fillRoundedRect(-80, 50, 160, 40, 10); });
+
+    var closeBtn = this.add.text(150, -75, '✕', {
+      fontSize: '22px',
+      color: '#ffffff',
+      fontWeight: 'bold'
+    }).setOrigin(0.5);
+    closeBtn.setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerdown', function() {
+      self.tweens.add({
+        targets: [overlay, panel],
+        alpha: 0,
+        duration: 200,
+        onComplete: function() {
+          overlay.destroy();
+          panel.destroy();
+        }
+      });
+    });
+    panel.add(closeBtn);
+
+    this.tweens.add({
+      targets: [overlay, panel],
+      alpha: 1,
+      duration: 200
+    });
+    this.tweens.add({
+      targets: panel,
+      scale: { from: 0.8, to: 1 },
+      duration: 250,
+      ease: 'Back.easeOut'
+    });
   };
 
   proto.createChapterProgress = function(width, height) {

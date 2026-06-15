@@ -16,7 +16,8 @@
     unlocks: {
       levels: [1],
       branches: {},
-      achievements: []
+      achievements: [],
+      parts: ['engine_basic', 'tires_basic', 'suspension_basic', 'brakes_basic', 'body_basic', 'nitro_none']
     },
     settings: {
       soundEnabled: true,
@@ -39,6 +40,34 @@
       bestStats: {},
       runHistory: {},
       starRatings: {}
+    },
+    economy: {
+      coins: 500,
+      totalCoinsEarned: 0,
+      totalCoinsSpent: 0
+    },
+    garage: {
+      currentCar: 'car_basic',
+      ownedCars: ['car_basic'],
+      equippedParts: {
+        engine: 'engine_basic',
+        tires: 'tires_basic',
+        suspension: 'suspension_basic',
+        brakes: 'brakes_basic',
+        body: 'body_basic',
+        nitro: 'nitro_none'
+      },
+      carCustomizations: {
+        car_basic: {
+          color: '#ff4500',
+          decals: []
+        }
+      },
+      levelRequirements: {
+        level_1: { minPower: 0, coinsRequired: 0 },
+        level_2: { minPower: 150, coinsRequired: 0 },
+        level_3: { minPower: 350, coinsRequired: 0 }
+      }
     }
   };
 
@@ -98,9 +127,10 @@
         this._migrationManager = new MountainRacer.VersionMigration();
         this._loadData();
         this._highScoreManager = new MountainRacer.HighScoreManager(this);
-        this._unlockManager = new MountainRacer.UnlockManager(this);
-        this._settingsManager = new MountainRacer.SettingsManager(this);
-        this._initialized = true;
+      this._unlockManager = new MountainRacer.UnlockManager(this);
+      this._settingsManager = new MountainRacer.SettingsManager(this);
+      this._garageManager = new MountainRacer.GarageManager(this);
+      this._initialized = true;
         this._emit('initialized', { version: this._data._version });
         return true;
       } catch (e) {
@@ -398,6 +428,14 @@
     proto.getSettingsManager = function() {
       if (!this._initialized) this.init();
       return this._settingsManager;
+    };
+
+    proto.getGarageManager = function() {
+      if (!this._initialized) this.init();
+      if (!this._garageManager) {
+        this._garageManager = new MountainRacer.GarageManager(this);
+      }
+      return this._garageManager;
     };
 
     proto.on = function(event, callback) {
