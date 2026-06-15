@@ -38,6 +38,7 @@
     this.tournamentSubmitResult = data.tournamentSubmitResult || null;
     this.tournamentFinalResult = null;
     this.tournamentRewards = null;
+    this.propStats = data.propStats || null;
   };
 
   proto.create = function() {
@@ -65,6 +66,10 @@
     if (this.tournamentMode && this.tournamentId) {
       this.processTournamentEnd();
       this.createTournamentRewardPanel(width, height);
+    }
+
+    if (this.propStats && this.propStats.totalPickedUp > 0) {
+      this.createPropStatsPanel(width, height);
     }
 
     this.createButtons(width, height);
@@ -2067,6 +2072,114 @@
         color: item.color
       }).setOrigin(0, 0.5);
       this.addTabElement(wPct);
+    }
+  };
+
+  proto.createPropStatsPanel = function(width, height) {
+    var ps = this.propStats;
+    if (!ps || ps.totalPickedUp === 0) return;
+
+    var panelW = 380;
+    var panelH = 40 + 32 + ps.byType.length * 38 + 80;
+    var panelX = width / 2 - panelW / 2;
+    var baseY = height / 2 + 130;
+
+    var bg = this.add.graphics();
+    bg.fillStyle(0x1a1a2e, 0.92);
+    bg.fillRoundedRect(panelX, baseY, panelW, panelH, 12);
+    bg.lineStyle(2, 0x9c27b0, 1);
+    bg.strokeRoundedRect(panelX, baseY, panelW, panelH, 12);
+    bg.setScrollFactor(0);
+    bg.setDepth(100);
+
+    var title = this.add.text(width / 2, baseY + 22, '🎒 道具结算', {
+      fontSize: '16px',
+      fontWeight: 'bold',
+      color: '#ce93d8'
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
+
+    var summaryY = baseY + 50;
+    var summaryItems = [
+      { icon: '📦', label: '拾取', value: ps.totalPickedUp },
+      { icon: '🎯', label: '使用', value: ps.totalUsed },
+      { icon: '⏳', label: '过期', value: ps.totalExpired },
+      { icon: '🛡️', label: '抵挡', value: ps.damageBlocked },
+      { icon: '💚', label: '恢复', value: ps.healthRestored }
+    ];
+
+    var itemW = panelW / summaryItems.length;
+    for (var s = 0; s < summaryItems.length; s++) {
+      var si = summaryItems[s];
+      var ix = panelX + s * itemW + itemW / 2;
+
+      var sIcon = this.add.text(ix - 14, summaryY, si.icon, {
+        fontSize: '13px'
+      }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
+
+      var sVal = this.add.text(ix + 4, summaryY, '' + si.value, {
+        fontSize: '13px',
+        fontWeight: 'bold',
+        color: '#ffffff'
+      }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
+    }
+
+    var detailY = summaryY + 28;
+    var detailLeftX = panelX + 15;
+
+    var detailHeader = this.add.graphics();
+    detailHeader.fillStyle(0x2a2a3e, 1);
+    detailHeader.fillRoundedRect(panelX + 10, detailY - 8, panelW - 20, 22, 4);
+    detailHeader.setScrollFactor(0);
+    detailHeader.setDepth(100);
+
+    var headerText = this.add.text(width / 2, detailY + 3, '📋 道具明细', {
+      fontSize: '11px',
+      fontWeight: 'bold',
+      color: '#aaaaaa'
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
+
+    detailY += 26;
+
+    for (var d = 0; d < ps.byType.length; d++) {
+      var item = ps.byType[d];
+      var rowY = detailY + d * 38;
+
+      var rowBg = this.add.graphics();
+      rowBg.fillStyle(d % 2 === 0 ? 0x222238 : 0x1e1e32, 1);
+      rowBg.fillRoundedRect(panelX + 10, rowY - 14, panelW - 20, 34, 6);
+      rowBg.setScrollFactor(0);
+      rowBg.setDepth(100);
+
+      var itemIcon = this.add.text(detailLeftX + 8, rowY, item.icon, {
+        fontSize: '16px'
+      }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
+
+      var itemName = this.add.text(detailLeftX + 32, rowY - 5, item.name, {
+        fontSize: '12px',
+        fontWeight: 'bold',
+        color: item.color
+      }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
+
+      var rarityLabel = this.add.text(detailLeftX + 32, rowY + 9, item.rarity, {
+        fontSize: '9px',
+        color: '#888888'
+      }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
+
+      var statX = panelX + panelW - 25;
+      var pickupText = this.add.text(statX - 80, rowY, '📦' + item.pickedUp, {
+        fontSize: '11px',
+        color: '#cccccc'
+      }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
+
+      var usedText = this.add.text(statX - 35, rowY, '🎯' + item.used, {
+        fontSize: '11px',
+        color: '#4caf50'
+      }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
+
+      var expiredText = this.add.text(statX, rowY, '⏳' + item.expired, {
+        fontSize: '11px',
+        color: '#ff9800'
+      }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
     }
   };
 

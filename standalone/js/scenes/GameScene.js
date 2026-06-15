@@ -80,8 +80,10 @@
     this.obstacles = new MountainRacer.Obstacles(this, this.terrain, this.terrain.config);
     this.dangerZones = new MountainRacer.DangerZones(this, this.terrain, this.terrain.config);
     this.collectibles = new MountainRacer.Collectibles(this, this.terrain, this.terrain.config);
+    this.propSystem = new MountainRacer.PropSystem(this, this.terrain, this.terrain.config);
 
     this.createHUD(width, height);
+    this.createPropHUD(width, height);
     this.createPauseButton(width);
     this.createBranchMinimap(width, height);
 
@@ -239,6 +241,165 @@
       fontWeight: 'bold',
       color: '#f44336'
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(501);
+  };
+
+  proto.createPropHUD = function(width, height) {
+    this.propSlotContainers = [];
+    var slotSize = 36;
+    var slotGap = 6;
+    var maxSlots = 5;
+    var totalSlotW = maxSlots * slotSize + (maxSlots - 1) * slotGap;
+    var startX = width / 2 - totalSlotW / 2;
+    var slotY = height - 55;
+
+    this.propSlotsBg = this.add.graphics();
+    this.propSlotsBg.fillStyle(0x000000, 0.4);
+    this.propSlotsBg.fillRoundedRect(startX - 8, slotY - slotSize / 2 - 6, totalSlotW + 16, slotSize + 12, 8);
+    this.propSlotsBg.setScrollFactor(0);
+    this.propSlotsBg.setDepth(500);
+
+    for (var i = 0; i < maxSlots; i++) {
+      var sx = startX + i * (slotSize + slotGap) + slotSize / 2;
+      var container = this.add.container(sx, slotY);
+      container.setScrollFactor(0);
+      container.setSize(slotSize, slotSize);
+      container.setDepth(501);
+
+      var slotBg = this.add.graphics();
+      slotBg.fillStyle(0x222222, 0.7);
+      slotBg.fillRoundedRect(-slotSize / 2, -slotSize / 2, slotSize, slotSize, 6);
+      slotBg.lineStyle(1.5, 0x666666, 0.8);
+      slotBg.strokeRoundedRect(-slotSize / 2, -slotSize / 2, slotSize, slotSize, 6);
+      container.add(slotBg);
+
+      var iconText = this.add.text(0, -2, '', {
+        fontSize: '16px'
+      }).setOrigin(0.5);
+      container.add(iconText);
+
+      var countText = this.add.text(slotSize / 2 - 2, slotSize / 2 - 2, '', {
+        fontSize: '10px',
+        fontWeight: 'bold',
+        color: '#ffffff'
+      }).setOrigin(1, 1);
+      container.add(countText);
+
+      var cooldownOverlay = this.add.graphics();
+      container.add(cooldownOverlay);
+
+      container.slotBg = slotBg;
+      container.iconText = iconText;
+      container.countText = countText;
+      container.cooldownOverlay = cooldownOverlay;
+      container.slotIndex = i;
+
+      (function(idx, cont) {
+        cont.setInteractive(
+          new Phaser.Geom.Rectangle(-slotSize / 2, -slotSize / 2, slotSize, slotSize),
+          Phaser.Geom.Rectangle.Contains
+        );
+        cont.on('pointerdown', function() {
+          if (this.scene.propSystem) {
+            var result = this.scene.propSystem.useInventorySlot(idx);
+            if (result && result.success) {
+              this.scene.showFloatingText(
+                this.scene.carPhysics.car.x,
+                this.scene.carPhysics.car.y - 70,
+                '✅ ' + (MountainRacer.PropConfig.getPropDef(result.propId) || {}).name + '!',
+                (MountainRacer.PropConfig.getPropDef(result.propId) || {}).color || 0x4caf50
+              );
+            }
+          }
+        });
+      })(i, container);
+
+      this.propSlotContainers.push(container);
+    }
+
+    this.propActiveEffects = [];
+    this.propEffectY = slotY - slotSize / 2 - 18;
+  };
+
+  proto.updatePropHUD = function() {
+    if (!this.propSystem || !this.propSlotContainers) return;
+
+    var display = this.propSystem.getInventoryDisplay();
+    var slotSize = 36;
+
+    for (var i = 0; i < this.propSlotContainers.length; i++) {
+      var cont = this.propSlotContainers[i];
+      if (i < display.length) {
+        var item = display[i];
+        var def = MountainRacer.PropConfig.getPropDef(item.propId);
+        cont.iconText.setText(def ? def.icon : '?');
+        cont.countText.setText(item.count > 1 ? 'x' + item.count : '');
+
+        cont.cooldownOverlay.clear();
+        if (item.cooldownRemaining > 0 && def) {
+          var cdPct = item.cooldownRemaining / def.cooldown;
+          var cdH = Math.floor(slotSize * cdPct);
+          cont.cooldownOverlay.fillStyle(0x000000, 0.5);
+          cont.cooldownOverlay.fillRoundedRect(-slotSize / 2, -slotSize / 2 + (slotSize - cdH), slotSize, cdH, 3);
+        }
+
+        cont.slotBg.clear();
+        var rarityColor = MountainRacer.PropConfig.getRarityColor(def ? def.rarity : 'common');
+        cont.slotBg.fillStyle(0x222222, 0.7);
+        cont.slotBg.fillRoundedRect(-slotSize / 2, -slotSize / 2, slotSize, slotSize, 6);
+        cont.slotBg.lineStyle(1.5, item.canUse ? rarityColor.hex : 0x666666, item.canUse ? 1 : 0.5);
+        cont.slotBg.strokeRoundedRect(-slotSize / 2, -slotSize / 2, slotSize, slotSize, 6);
+      } else {
+        cont.iconText.setText('');
+        cont.countText.setText('');
+        cont.cooldownOverlay.clear();
+        cont.slotBg.clear();
+        cont.slotBg.fillStyle(0x222222, 0.7);
+        cont.slotBg.fillRoundedRect(-slotSize / 2, -slotSize / 2, slotSize, slotSize, 6);
+        cont.slotBg.lineStyle(1.5, 0x666666, 0.8);
+        cont.slotBg.strokeRoundedRect(-slotSize / 2, -slotSize / 2, slotSize, slotSize, 6);
+      }
+    }
+
+    this.updatePropEffectHUD();
+  };
+
+  proto.updatePropEffectHUD = function() {
+    if (!this.propSystem) return;
+
+    for (var i = 0; i < this.propActiveEffects.length; i++) {
+      this.propActiveEffects[i].destroy();
+    }
+    this.propActiveEffects = [];
+
+    var effects = this.propSystem.getActiveEffectsDisplay();
+    var width = this.scale.width;
+    var baseX = width / 2 - effects.length * 40;
+
+    for (var j = 0; j < effects.length; j++) {
+      var eff = effects[j];
+      var ex = baseX + j * 80;
+      var ey = this.propEffectY;
+
+      var effBg = this.add.graphics();
+      effBg.fillStyle(eff.remainingMs > 0 ? 0x333333 : 0x1a1a1a, 0.8);
+      effBg.fillRoundedRect(ex - 35, ey - 10, 70, 20, 5);
+      if (eff.remainingMs > 0) {
+        var progress = eff.progress;
+        var fillW = Math.max(2, 66 * (1 - progress));
+        effBg.fillStyle(0x4caf50, 0.5);
+        effBg.fillRoundedRect(ex - 33, ey - 8, fillW, 16, 4);
+      }
+      effBg.setScrollFactor(0);
+      effBg.setDepth(501);
+      this.propActiveEffects.push(effBg);
+
+      var effText = this.add.text(ex, ey, eff.icon + ' ' + Math.ceil(eff.remainingMs / 1000) + 's', {
+        fontSize: '11px',
+        fontWeight: 'bold',
+        color: '#ffffff'
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(502);
+      this.propActiveEffects.push(effText);
+    }
   };
 
   proto.createPauseButton = function(width) {
@@ -2029,7 +2190,14 @@
       if (collision.type === 'rock') {
         this.carPhysics.applyDamage();
         this.carPhysics.slowDown(collision.slowdown);
-        var dead = this.scoreManager.takeDamage(collision.damage);
+        var rockDmg = collision.damage;
+        if (this.propSystem) {
+          rockDmg = this.propSystem.processDamage(rockDmg);
+          if (rockDmg === 0) {
+            this.showFloatingText(carX, this.carPhysics.car.y - 90, '🛡️ 护盾抵挡!', 0x4caf50);
+          }
+        }
+        var dead = rockDmg > 0 ? this.scoreManager.takeDamage(rockDmg) : false;
         this.scoreManager.recordHitEvent('rock', collision.damage, carX);
         this.trackSeasonEvent('damage', { amount: collision.damage, source: 'rock', position: carX });
         this.damageCooldown = 800;
@@ -2088,7 +2256,14 @@
 
         if (damageAmount > 0) {
           this.carPhysics.applyDamage();
-          var destDead = this.scoreManager.takeDamage(damageAmount);
+          var actualDmg = damageAmount;
+          if (this.propSystem) {
+            actualDmg = this.propSystem.processDamage(damageAmount);
+            if (actualDmg === 0) {
+              this.showFloatingText(carX, this.carPhysics.car.y - 90, '🛡️ 护盾抵挡!', 0x4caf50);
+            }
+          }
+          var destDead = actualDmg > 0 ? this.scoreManager.takeDamage(actualDmg) : false;
           this.scoreManager.recordHitEvent(collision.type, damageAmount, carX);
           this.trackSeasonEvent('damage', { amount: damageAmount, source: collision.type, position: carX });
           this.damageCooldown = collision.type === 'barrel' ? 1000 : 600;
@@ -2125,7 +2300,14 @@
 
     var dangerResult = this.dangerZones.update(carX, this.carPhysics, delta, Date.now());
     if (dangerResult.damage > 0) {
-      var deadDanger = this.scoreManager.takeDamage(dangerResult.damage);
+      var dangerDmg = dangerResult.damage;
+      if (this.propSystem) {
+        dangerDmg = this.propSystem.processDamage(dangerResult.damage);
+        if (dangerDmg === 0) {
+          this.showFloatingText(carX, this.carPhysics.car.y - 90, '🛡️ 护盾抵挡!', 0x4caf50);
+        }
+      }
+      var deadDanger = dangerDmg > 0 ? this.scoreManager.takeDamage(dangerDmg) : false;
       this.scoreManager.recordHitEvent('dangerZone', dangerResult.damage, carX);
       this.trackSeasonEvent('damage', { amount: dangerResult.damage, source: 'dangerZone', position: carX });
       this.damageCooldown = 500;
@@ -2149,7 +2331,8 @@
 
     var collectResult = this.collectibles.checkCollisions(carBounds, this.carPhysics);
     if (collectResult) {
-      var earned = this.scoreManager.addCollectibleScore(collectResult.value, collectResult.type);
+      var propScoreMult = this.propSystem ? this.propSystem.getScoreMultiplier() : 1.0;
+      var earned = this.scoreManager.addCollectibleScore(collectResult.value * propScoreMult, collectResult.type);
       var collectLabel = collectResult.type === 'gem' ? '+' + earned + ' 宝石!' : '+' + earned + ' 金币!';
       var collectColor = collectResult.type === 'gem' ? 0xe91e63 : 0xffd700;
       this.showFloatingText(carX, this.carPhysics.car.y - 60, collectLabel, collectColor);
@@ -2159,6 +2342,21 @@
         value: collectResult.value,
         position: carX
       });
+    }
+
+    if (this.propSystem) {
+      var propResults = this.propSystem.checkCollisions(carBounds, this.carPhysics);
+      if (propResults) {
+        for (var pi = 0; pi < propResults.length; pi++) {
+          var pr = propResults[pi];
+          var propDef = MountainRacer.PropConfig.getPropDef(pr.propId);
+          if (propDef) {
+            var propLabel = propDef.icon + ' ' + propDef.name + (pr.autoUsed ? ' (自动)' : '');
+            this.showFloatingText(carX, this.carPhysics.car.y - 80, propLabel, propDef.color);
+          }
+        }
+      }
+      this.propSystem.update(delta, this.carPhysics);
     }
 
     this.damageCooldown = Math.max(0, this.damageCooldown - delta);
@@ -2611,6 +2809,7 @@
     this.obstacles.regenerateForBranch(branchId);
     this.dangerZones.setCurrentBranch(branchId);
     this.collectibles.regenerateForBranch(branchId);
+    this.propSystem.regenerateForBranch(branchId);
 
     var branchHeight = this.terrain.getHeightAtBranch(this.carPhysics.car.x, branchId);
     this.carPhysics.car.y = branchHeight - 60;
@@ -2673,6 +2872,7 @@
     this.obstacles.regenerateForBranch('main');
     this.dangerZones.setCurrentBranch('main');
     this.collectibles.regenerateForBranch('main');
+    this.propSystem.regenerateForBranch('main');
 
     var oldBranchCfg = this.terrain.getBranchConfig(oldBranch);
     var branchName = oldBranchCfg ? oldBranchCfg.name : oldBranch;
@@ -3150,6 +3350,7 @@
     this.checkDangerWarning(this.carPhysics.car.x);
     this.checkUpcomingMerge(this.carPhysics.car.x);
     this.updateMinimap(this.carPhysics.car.x);
+    this.updatePropHUD();
   };
 
   proto.checkDangerWarning = function(carX) {
@@ -3512,6 +3713,7 @@
     }
 
     this.time.delayedCall(600, function() {
+      var propStats = self.propSystem ? self.propSystem.getSettlementStats() : null;
       self.scene.start('GameOverScene', {
         level: self.level,
         win: win,
@@ -3534,7 +3736,8 @@
         seasonResult: seasonResult,
         tournamentMode: self.tournamentMode,
         tournamentId: self.tournamentId,
-        tournamentSubmitResult: tournamentSubmitResult
+        tournamentSubmitResult: tournamentSubmitResult,
+        propStats: propStats
       });
     });
   };
@@ -3559,6 +3762,10 @@
     if (this.collectibles) {
       this.collectibles.destroy();
       this.collectibles = null;
+    }
+    if (this.propSystem) {
+      this.propSystem.destroy();
+      this.propSystem = null;
     }
     if (this.inputManager) {
       this.inputManager.destroy();

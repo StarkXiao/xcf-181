@@ -71,6 +71,10 @@
 
     this.appliedStats = null;
     this.garageApplied = false;
+
+    this._speedBoostActive = false;
+    this._speedBoostMultiplier = 1;
+    this._speedBoostEndTime = 0;
   };
 
   var proto = MountainRacer.CarPhysics.prototype;
@@ -270,6 +274,10 @@
     var carY = this.car.y;
 
     this.updateNitro(dt);
+
+    if (this._speedBoostActive && Date.now() >= this._speedBoostEndTime) {
+      this.clearSpeedBoost();
+    }
 
     var cosAngle = Math.cos(this.angle);
     var sinAngle = Math.sin(this.angle);
@@ -651,6 +659,29 @@
   proto.slowDown = function(amount) {
     this.vx *= amount;
     this.vy *= amount;
+  };
+
+  proto.applySpeedBoost = function(multiplier, duration) {
+    this._speedBoostMultiplier = multiplier;
+    this._speedBoostEndTime = Date.now() + duration;
+    this._speedBoostActive = true;
+    this.maxSpeed = this.baseMaxSpeed * multiplier;
+    this.acceleration = this.baseAcceleration * multiplier;
+  };
+
+  proto.clearSpeedBoost = function() {
+    this._speedBoostActive = false;
+    this._speedBoostMultiplier = 1;
+    this._speedBoostEndTime = 0;
+    this.maxSpeed = this.baseMaxSpeed;
+    this.acceleration = this.baseAcceleration;
+    if (this.appliedStats) {
+      this.applyGarageMods();
+    }
+  };
+
+  proto.isSpeedBoostActive = function() {
+    return this._speedBoostActive && Date.now() < this._speedBoostEndTime;
   };
 
   proto.destroy = function() {
