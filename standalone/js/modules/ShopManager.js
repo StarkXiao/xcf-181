@@ -122,6 +122,7 @@
     var shop = this._getShopData() || {};
     var today = new Date().toDateString();
     var garageMgr = this._dm.getGarageManager();
+    var refreshConfig = MountainRacer.ShopConfig.getRefreshConfig();
 
     if (useFree && check.freeLeft > 0) {
       shop.lastFreeRefreshDay = today;
@@ -129,11 +130,23 @@
       this._saveShopData(shop);
     } else {
       if (!check.canAfford) {
-        return { success: false, reason: 'insufficient_coins', needed: refreshConfig.refreshCost - garageMgr.getCoins() };
+        var currentCoins = garageMgr.getCoins();
+        var needed = refreshConfig.refreshCost - currentCoins;
+        return {
+          success: false,
+          reason: 'insufficient_coins',
+          needed: needed,
+          current: currentCoins,
+          cost: refreshConfig.refreshCost
+        };
       }
-      var spendResult = garageMgr.spendCoins(MountainRacer.ShopConfig.getRefreshConfig().refreshCost, 'shop_refresh_daily');
+      var spendResult = garageMgr.spendCoins(refreshConfig.refreshCost, 'shop_refresh_daily');
       if (!spendResult.success) {
-        return { success: false, reason: spendResult.reason };
+        return {
+          success: false,
+          reason: spendResult.reason,
+          needed: spendResult.needed || 0
+        };
       }
     }
 

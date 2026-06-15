@@ -268,7 +268,11 @@
         self.showPurchaseToast(canFree ? '已免费刷新!' : '刷新成功!');
         self.refreshContent();
       } else {
-        self.showPurchaseToast(result.reason === 'insufficient_coins' ? '金币不足!' : '刷新失败!');
+        if (result.reason === 'insufficient_coins') {
+          self.showPurchaseToast('金币不足! 还差 ' + result.needed + ' 💰');
+        } else {
+          self.showPurchaseToast('刷新失败!');
+        }
       }
     });
 
@@ -410,14 +414,22 @@
             var openResult = self.shopMgr.openLuckyBox(1);
           }, 300);
         } else {
-          self.showPurchaseToast(result.reason === 'insufficient' ? '金币不足!' : '购买失败!');
+          if (result.reason === 'insufficient') {
+            self.showPurchaseToast('金币不足! 还差 ' + (result.needed || 0) + ' 💰');
+          } else {
+            self.showPurchaseToast('购买失败!');
+          }
         }
       });
     } else {
       this.showConfirmDialog('确认购买 ' + item.name + '? (' + item.price + ' 💰)', function() {
         var result = self.shopMgr.purchaseConsumable(item.id, 1);
         if (!result.success) {
-          self.showPurchaseToast(result.reason === 'insufficient' ? '金币不足!' : '购买失败!');
+          if (result.reason === 'insufficient') {
+            self.showPurchaseToast('金币不足! 还差 ' + (result.needed || 0) + ' 💰');
+          } else {
+            self.showPurchaseToast('购买失败!');
+          }
         }
       });
     }
@@ -712,13 +724,18 @@
 
   proto.purchaseLimitedPack = function(pack) {
     var self = this;
-    this.showConfirmDialog('确认购买 ' + pack.name + '?', function() {
+    var priceLabel = pack.currency === 'coins' ? (' (' + pack.price + ' 💰)') : '';
+    this.showConfirmDialog('确认购买 ' + pack.name + '?' + priceLabel, function() {
       var result = self.shopMgr.purchaseLimitedPack(pack.id);
       if (!result.success) {
         var msg = '购买失败!';
-        if (result.reason === 'insufficient') msg = '金币不足!';
-        else if (result.reason === 'max_purchased') msg = '已达购买上限!';
-        else if (result.reason === 'not_available') msg = '礼包已过期!';
+        if (result.reason === 'insufficient') {
+          msg = '金币不足! 还差 ' + (result.needed || 0) + ' 💰';
+        } else if (result.reason === 'max_purchased') {
+          msg = '已达购买上限!';
+        } else if (result.reason === 'not_available') {
+          msg = '礼包已过期!';
+        }
         self.showPurchaseToast(msg);
       }
     });
