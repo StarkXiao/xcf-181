@@ -31,6 +31,7 @@
     this.createSeasonEntryButton(width, height);
     this.createTaskCenterButton(width, height);
     this.createTournamentButton(width, height);
+    this.createPlayerProfileButton(width, height);
     this.createInstructions(width, height);
     this.createControlsHint(width, height);
     this.createGarageButton(width, height);
@@ -166,7 +167,7 @@
   };
 
   proto.createGarageButton = function(width, height) {
-    var btnX = width / 2;
+    var btnX = width / 2 + 80;
     var btnY = 540;
     var btnW = 200;
     var btnH = 50;
@@ -376,6 +377,76 @@
     });
 
     this.tournamentButton = container;
+  };
+
+  proto.createPlayerProfileButton = function(width, height) {
+    var btnX = width / 2 - 210;
+    var btnY = 540;
+    var btnW = 130;
+    var btnH = 50;
+
+    var container = this.add.container(btnX, btnY);
+    container.setSize(btnW, btnH);
+
+    var profileMgr = this.dataManager.getPlayerProfileManager();
+    var profile = profileMgr.getProfileSummary();
+    var level = profile ? profile.level : 1;
+    var winRate = profile ? profile.winRate : 0;
+
+    var gfx = this.add.graphics();
+    gfx.fillStyle(0x2196f3, 0.95);
+    gfx.fillRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 14);
+    gfx.lineGradientStyle(3, 0x64b5f6, 0x64b5f6, 0x1565c0, 0x1565c0, 1);
+    gfx.strokeRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 14);
+
+    var icon = this.add.text(-btnW / 2 + 18, 0, '👤', {
+      fontSize: '24px'
+    }).setOrigin(0, 0.5);
+
+    var label = this.add.text(8, -8, '玩家档案', {
+      fontSize: '14px',
+      fontWeight: 'bold',
+      color: '#ffffff',
+      stroke: '#0d47a1',
+      strokeThickness: 2
+    }).setOrigin(0, 0.5);
+
+    container.add([gfx, icon, label]);
+
+    if (level > 1 || winRate > 0) {
+      var statText = this.add.text(8, 10,
+        'Lv.' + level + '  ' + winRate + '%胜率', {
+          fontSize: '10px',
+          fontWeight: 'bold',
+          color: '#bbdefb'
+        }).setOrigin(0, 0.5);
+      container.add(statText);
+    }
+
+    var self = this;
+    container.setInteractive(
+      new Phaser.Geom.Rectangle(-btnW / 2, -btnH / 2, btnW, btnH),
+      Phaser.Geom.Rectangle.Contains
+    );
+    container.on('pointerover', function() {
+      self.tweens.add({ targets: this, scale: 1.08, duration: 150, ease: 'Power2' });
+    });
+    container.on('pointerout', function() {
+      self.tweens.add({ targets: this, scale: 1.0, duration: 150, ease: 'Power2' });
+    });
+    container.on('pointerdown', function() {
+      self.tweens.add({
+        targets: this,
+        scale: 0.95,
+        duration: 80,
+        yoyo: true,
+        onComplete: function() {
+          self.scene.start('PlayerProfileScene');
+        }
+      });
+    });
+
+    this.playerProfileButton = container;
   };
 
   proto.createInstructions = function(width, height) {

@@ -3715,6 +3715,33 @@
       }
     }
 
+    try {
+      var profileMgr = self.dataManager.getPlayerProfileManager();
+      var hitEvents = replayAnalysis && replayAnalysis.hitNodes ? replayAnalysis.hitNodes : [];
+      var collisionBreakdown = { rock: 0, barrel: 0, crate: 0, sign: 0, dangerZone: 0, rollover: 0 };
+      for (var he = 0; he < hitEvents.length; he++) {
+        var ht = hitEvents[he].type;
+        if (collisionBreakdown.hasOwnProperty(ht)) {
+          collisionBreakdown[ht]++;
+        }
+      }
+      var gradeLabel = performanceGrade && performanceGrade.label ? performanceGrade.label.charAt(0) : null;
+      var xpEarned = Math.max(10, Math.floor((detailedStats.totalScore || 0) / 100));
+      profileMgr.recordRaceComplete({
+        level: self.level,
+        won: win,
+        raceTime: detailedStats.time || 0,
+        stats: detailedStats,
+        collisions: hitEvents.length,
+        collisionBreakdown: collisionBreakdown,
+        grade: gradeLabel,
+        coinsEarned: coinReward,
+        xpEarned: xpEarned
+      });
+    } catch (e) {
+      console.warn('[GameScene] recordRaceComplete error:', e);
+    }
+
     this.time.delayedCall(600, function() {
       var propStats = self.propSystem ? self.propSystem.getSettlementStats() : null;
       self.scene.start('GameOverScene', {

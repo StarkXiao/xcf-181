@@ -59,6 +59,7 @@
         MountainRacer.GarageScene,
         MountainRacer.TaskCenterScene,
         MountainRacer.TournamentScene,
+        MountainRacer.PlayerProfileScene,
         MountainRacer.GameScene,
         MountainRacer.GameOverScene
       ],

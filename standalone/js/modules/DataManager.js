@@ -214,6 +214,7 @@
       this._carGrowthSystem = null;
       this._taskCenterManager = null;
       this._tournamentManager = null;
+      this._playerProfileManager = null;
       this._initialized = true;
         this._emit('initialized', { version: this._data._version });
         return true;
@@ -568,6 +569,14 @@
         this._tournamentManager = new MountainRacer.TournamentManager(this);
       }
       return this._tournamentManager;
+    };
+
+    proto.getPlayerProfileManager = function() {
+      if (!this._initialized) this.init();
+      if (!this._playerProfileManager) {
+        this._playerProfileManager = new MountainRacer.PlayerProfileManager(this);
+      }
+      return this._playerProfileManager;
     };
 
     proto.on = function(event, callback) {
