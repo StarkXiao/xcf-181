@@ -3980,6 +3980,7 @@
     this.mpMyFinishTime = null;
     this.mpMyRank = 0;
     this.mpFinished = false;
+    this.mpResultRecorded = false;
 
     var self = this;
 
@@ -3988,11 +3989,7 @@
     });
 
     this.mpManager.on('raceEnd', function(results) {
-      if (!self.mpFinished) {
-        self.mpFinished = true;
-        self.gameOver = true;
-        self.showMultiplayerResult(results);
-      }
+      self._handleRaceEnd(results);
     });
 
     this.mpManager.on('playerFinished', function(data) {
@@ -4172,22 +4169,34 @@
   };
 
   proto.handleMultiplayerGameEnd = function(win, stats) {
-    var self = this;
+    if (this.mpFinished) return;
     this.mpFinished = true;
 
     if (win) {
       this.mpMyFinishTime = this.scoreManager.getElapsedTime();
     }
 
-    this.time.delayedCall(1000, function() {
+    var self = this;
+    this.time.delayedCall(800, function() {
+      if (self.mpResultRecorded) return;
       var results = self.mpManager.getRaceResults();
       if (results && results.length > 0) {
-        self.showMultiplayerResult(results);
+        self._showMultiplayerResultOnce(results);
       }
     });
   };
 
-  proto.showMultiplayerResult = function(results) {
+  proto._handleRaceEnd = function(results) {
+    if (this.mpResultRecorded) return;
+    this.mpFinished = true;
+    this.gameOver = true;
+    this._showMultiplayerResultOnce(results);
+  };
+
+  proto._showMultiplayerResultOnce = function(results) {
+    if (this.mpResultRecorded) return;
+    this.mpResultRecorded = true;
+
     var self = this;
     var localPlayerId = this.mpManager.getLocalPlayerId();
     var myResult = null;
@@ -4211,14 +4220,17 @@
       myRank = myResult.rank;
     }
 
-    this.mpLeaderboard.recordRaceResult(this.level, myRank, myResult.time);
+    var raceId = this.multiplayerRoom ? this.multiplayerRoom.id : null;
+    this.mpLeaderboard.recordRaceResult(this.level, myRank, myResult.time, raceId);
 
     this.time.delayedCall(500, function() {
       self.scene.start('MultiplayerResultScene', {
         results: results,
         myTime: myResult.time,
         myRank: myRank,
-        track: self.level
+        track: self.level,
+        resultAlreadyRecorded: true,
+        raceId: raceId
       });
     });
   };

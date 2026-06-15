@@ -9,7 +9,9 @@
     this._cache = {};
     this._listeners = {};
     this._myBestTimes = {};
+    this._recordedRaceIds = {};
     this._loadLocalBestTimes();
+    this._loadRecordedRaceIds();
   };
 
   var proto = MountainRacer.MultiplayerLeaderboard.prototype;
@@ -28,6 +30,35 @@
   proto._saveLocalBestTimes = function() {
     try {
       localStorage.setItem('mp_leaderboard_my_best', JSON.stringify(this._myBestTimes));
+    } catch (e) {
+    }
+  };
+
+  proto._loadRecordedRaceIds = function() {
+    try {
+      var saved = localStorage.getItem('mp_recorded_race_ids');
+      if (saved) {
+        var arr = JSON.parse(saved);
+        for (var i = 0; i < arr.length; i++) {
+          this._recordedRaceIds[arr[i]] = true;
+        }
+      }
+    } catch (e) {
+      this._recordedRaceIds = {};
+    }
+  };
+
+  proto._saveRecordedRaceIds = function() {
+    try {
+      var arr = Object.keys(this._recordedRaceIds);
+      if (arr.length > 200) {
+        arr = arr.slice(arr.length - 200);
+        this._recordedRaceIds = {};
+        for (var i = 0; i < arr.length; i++) {
+          this._recordedRaceIds[arr[i]] = true;
+        }
+      }
+      localStorage.setItem('mp_recorded_race_ids', JSON.stringify(arr));
     } catch (e) {
     }
   };
@@ -107,7 +138,14 @@
     };
   };
 
-  proto.recordRaceResult = function(track, rank, time) {
+  proto.recordRaceResult = function(track, rank, time, raceId) {
+    var dedupeKey = raceId || (track + '_' + rank + '_' + time + '_' + Date.now());
+    if (this._recordedRaceIds[dedupeKey]) {
+      return this.getStats();
+    }
+    this._recordedRaceIds[dedupeKey] = true;
+    this._saveRecordedRaceIds();
+
     var stats = this.getStats();
     stats.totalRaces++;
     if (rank === 1) {

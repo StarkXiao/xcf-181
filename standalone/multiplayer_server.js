@@ -225,13 +225,17 @@ class MultiplayerServer extends EventEmitter {
       player.finished = true;
       player.finishTime = Date.now() - room.raceStartTime;
       player.rank = room.results.length + 1;
-      room.results.push({
-        playerId: player.id,
-        playerName: player.name,
-        rank: player.rank,
-        time: player.finishTime,
-        carColor: player.carColor
-      });
+
+      var alreadyInResults = room.results.some(r => r.playerId === player.id);
+      if (!alreadyInResults) {
+        room.results.push({
+          playerId: player.id,
+          playerName: player.name,
+          rank: player.rank,
+          time: player.finishTime,
+          carColor: player.carColor
+        });
+      }
 
       this._sendToClient(client, {
         type: 'player_finished',
@@ -249,12 +253,16 @@ class MultiplayerServer extends EventEmitter {
   }
 
   _endRace(room) {
+    if (room.status === 'finished') return;
     room.status = 'finished';
     room.raceEndTime = Date.now();
 
     room.results.sort((a, b) => a.rank - b.rank);
 
-    this._recordLeaderboard(room);
+    if (!room._leaderboardRecorded) {
+      room._leaderboardRecorded = true;
+      this._recordLeaderboard(room);
+    }
 
     this._broadcastToRoom(room, {
       type: 'race_end',

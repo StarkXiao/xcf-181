@@ -19,6 +19,8 @@
     this.myTime = data && data.myTime ? data.myTime : 0;
     this.myRank = data && data.myRank ? data.myRank : 0;
     this.track = data && data.track ? data.track : 1;
+    this.resultAlreadyRecorded = !!(data && data.resultAlreadyRecorded);
+    this.raceId = data && data.raceId ? data.raceId : null;
   };
 
   proto.create = function() {
@@ -239,7 +241,8 @@
   };
 
   proto.recordResult = function() {
-    this.leaderboard.recordRaceResult(this.track, this.myRank, this.myTime);
+    if (this.resultAlreadyRecorded) return;
+    this.leaderboard.recordRaceResult(this.track, this.myRank, this.myTime, this.raceId);
   };
 
   proto.playCelebration = function() {
