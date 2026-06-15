@@ -33,11 +33,19 @@
     this.tabContentElements = [];
     this.seasonMode = !!(data && data.seasonMode);
     this.seasonResult = data.seasonResult || null;
+    this.tournamentMode = !!(data && data.tournamentMode);
+    this.tournamentId = data && data.tournamentId ? data.tournamentId : null;
+    this.tournamentSubmitResult = data.tournamentSubmitResult || null;
+    this.tournamentFinalResult = null;
+    this.tournamentRewards = null;
   };
 
   proto.create = function() {
     var width = this.scale.width;
     var height = this.scale.height;
+
+    this.dataManager = MountainRacer.DataManager.getInstance();
+    this.tournamentMgr = this.dataManager.getTournamentManager();
 
     this.createBackground(width, height);
     this.createResultPanel(width, height);
@@ -52,6 +60,11 @@
 
     if (this.seasonMode && this.seasonResult) {
       this.createSeasonRewardPanel(width, height);
+    }
+
+    if (this.tournamentMode && this.tournamentId) {
+      this.processTournamentEnd();
+      this.createTournamentRewardPanel(width, height);
     }
 
     this.createButtons(width, height);
@@ -2120,37 +2133,95 @@
       return container;
     };
 
-    createBtn(startX, '🏠 菜单', 0x9e9e9e, function() {
-      if (self.seasonMode) {
-        self.scene.start('ChapterMapScene', { chapterId: self.seasonResult ? self.seasonResult.chapterId : null });
-      } else {
-        self.scene.start('MenuScene');
-      }
-    });
+    if (this.tournamentMode) {
+      createBtn(startX, '🏟️ 赛事大厅', 0x009688, function() {
+        self.scene.start('TournamentScene');
+      });
 
-    createBtn(startX + btnW + gap, '🔄 重玩', 0x2196f3, function() {
-      if (self.seasonMode && self.seasonResult) {
-        self.scene.start('GameScene', {
-          level: self.level,
-          seasonMode: true,
-          chapterId: self.seasonResult.chapterId,
-          nodeId: self.seasonResult.nodeId,
-          nodeType: self.seasonResult.nodeType
+      var canRetry = this.tournamentFinalResult &&
+        this.tournamentFinalResult.archive &&
+        this.tournamentFinalResult.archive.attemptsRemaining !== undefined &&
+        this.tournamentFinalResult.archive.attemptsRemaining > 0;
+
+      if (canRetry) {
+        createBtn(startX + btnW + gap, '🔄 再战一次', 0x2196f3, function() {
+          var startResult = self.tournamentMgr.startTournamentRun(self.tournamentId);
+          if (startResult.success) {
+            self.scene.start('GameScene', {
+              level: self.level,
+              tournamentMode: true,
+              tournamentId: self.tournamentId
+            });
+          } else {
+            self.scene.start('TournamentScene');
+          }
         });
       } else {
-        self.scene.start('GameScene', { level: self.level });
+        createBtn(startX + btnW + gap, '🏠 菜单', 0x9e9e9e, function() {
+          self.scene.start('MenuScene');
+        });
       }
-    });
 
-    if (self.seasonMode) {
+      if (this.tournamentRewards && !this.tournamentRewards.claimed) {
+        createBtn(startX + (btnW + gap) * 2, '🎁 领取奖励', 0xffd700, function() {
+          var claimResult = self.tournamentMgr.claimTournamentRewards(self.tournamentId);
+          if (claimResult.success) {
+            self.tournamentRewards.claimed = true;
+            self.scene.start('TournamentScene');
+          }
+        });
+      } else {
+        createBtn(startX + (btnW + gap) * 2, '📊 查看排行', 0x9c27b0, function() {
+          self.scene.start('TournamentScene');
+        });
+      }
+    } else if (this.seasonMode) {
+      createBtn(startX, '🏠 菜单', 0x9e9e9e, function() {
+        if (self.seasonMode) {
+          self.scene.start('ChapterMapScene', { chapterId: self.seasonResult ? self.seasonResult.chapterId : null });
+        } else {
+          self.scene.start('MenuScene');
+        }
+      });
+
+      createBtn(startX + btnW + gap, '🔄 重玩', 0x2196f3, function() {
+        if (self.seasonMode && self.seasonResult) {
+          self.scene.start('GameScene', {
+            level: self.level,
+            seasonMode: true,
+            chapterId: self.seasonResult.chapterId,
+            nodeId: self.seasonResult.nodeId,
+            nodeType: self.seasonResult.nodeType
+          });
+        } else {
+          self.scene.start('GameScene', { level: self.level });
+        }
+      });
+
       createBtn(startX + (btnW + gap) * 2, '🗺️ 返回地图', 0x4caf50, function() {
         self.scene.start('ChapterMapScene', { chapterId: self.seasonResult ? self.seasonResult.chapterId : null });
       });
     } else if (this.win && this.level < 3) {
+      createBtn(startX, '🏠 菜单', 0x9e9e9e, function() {
+        self.scene.start('MenuScene');
+      });
+
+      createBtn(startX + btnW + gap, '🔄 重玩', 0x2196f3, function() {
+        self.scene.start('GameScene', { level: self.level });
+      });
+
       createBtn(startX + (btnW + gap) * 2, '➡ 下一关', 0x4caf50, function() {
         self.scene.start('GameScene', { level: self.level + 1 });
       });
     } else {
+      createBtn(startX, '🏠 菜单', 0x9e9e9e, function() {
+        self.scene.start('MenuScene');
+      });
+
+      createBtn(startX + btnW + gap, '🔄 重玩', 0x2196f3, function() {
+        self.scene.start('GameScene', { level: self.level });
+      });
+
       createBtn(startX + (btnW + gap) * 2, this.win ? '🌟 通关' : '🎯 重试', 0xff6b35, function() {
         self.scene.start('GameScene', { level: self.level });
       });
@@ -2259,6 +2330,176 @@
       y: panelY,
       duration: 500,
       delay: 300,
+      ease: 'Back.easeOut'
+    });
+  };
+
+  proto.processTournamentEnd = function() {
+    if (!this.tournamentId) return;
+
+    var currentPhase = this.tournamentMgr.getCurrentPhase(this.tournamentId);
+    var registration = this.tournamentMgr.getRegistration(this.tournamentId);
+    var tournament = this.tournamentMgr.getTournament(this.tournamentId);
+
+    if (!registration || !tournament) return;
+
+    var attemptsRemaining = 0;
+    if (currentPhase && currentPhase.attempts > 0) {
+      attemptsRemaining = Math.max(0, currentPhase.attempts - registration.attemptsUsed);
+    }
+
+    var isPhaseComplete = currentPhase &&
+      (currentPhase.attempts === 0 || registration.attemptsUsed >= currentPhase.attempts);
+    var isTournamentEnd = !currentPhase || currentPhase.id === 'rewards';
+
+    var shouldArchive = isPhaseComplete || isTournamentEnd;
+
+    var finalResult = {
+      registration: registration,
+      tournament: tournament,
+      currentPhase: currentPhase,
+      attemptsUsed: registration.attemptsUsed,
+      attemptsRemaining: attemptsRemaining,
+      isPhaseComplete: isPhaseComplete,
+      isTournamentEnd: isTournamentEnd,
+      shouldArchive: shouldArchive,
+      archive: null,
+      claimableReward: null
+    };
+
+    if (shouldArchive) {
+      var archiveResult = this.tournamentMgr.processTournamentEnd(this.tournamentId);
+      if (archiveResult.success) {
+        finalResult.archive = archiveResult.archive;
+        finalResult.rank = archiveResult.rank;
+        finalResult.rankBucket = archiveResult.rankBucket;
+        finalResult.claimableReward = archiveResult.claimableReward;
+
+        var rankBucket = archiveResult.rankBucket;
+        var tournamentType = tournament.type;
+        var rewardTier = rankBucket ?
+          MountainRacer.TournamentConfig.getRewardForRank(tournamentType, rankBucket.rank) : null;
+
+        this.tournamentRewards = {
+          rank: archiveResult.rank ? archiveResult.rank.rank : null,
+          percentile: archiveResult.rank ? archiveResult.rank.percentile : null,
+          rankLabel: archiveResult.rankBucket ? archiveResult.rankBucket.label : null,
+          rewardTier: rewardTier,
+          earnedReward: archiveResult.claimableReward,
+          claimed: false
+        };
+      }
+    }
+
+    this.tournamentFinalResult = finalResult;
+  };
+
+  proto.createTournamentRewardPanel = function(width, height) {
+    var result = this.tournamentFinalResult;
+    if (!result) return;
+
+    var panelY = height / 2 + 200;
+    if (this.win && this.starRating) panelY = height / 2 + 300;
+    else if (this.win && this.detailedStats) panelY = height / 2 + 370;
+
+    var items = [];
+    items.push({ icon: '🏟️', text: '赛事结算', header: true });
+
+    var tournament = result.tournament;
+    items.push({ icon: tournament.icon || '🏁', text: tournament.name || '赛事' });
+
+    var registration = result.registration;
+    if (registration) {
+      items.push({ icon: '📊', text: '本次得分: ' + (this.score || 0) });
+      items.push({ icon: '🏆', text: '最佳得分: ' + (registration.bestScore || 0) });
+      items.push({ icon: '⏱', text: '最佳用时: ' + (registration.bestTime ? (registration.bestTime.toFixed(1) + 's') : '-') });
+      items.push({ icon: '🎯', text: '已用次数: ' + result.attemptsUsed +
+        (result.currentPhase && result.currentPhase.attempts > 0 ?
+          (' / ' + result.currentPhase.attempts) : '') });
+
+      if (result.attemptsRemaining > 0) {
+        items.push({ icon: '🔄', text: '剩余挑战: ' + result.attemptsRemaining + ' 次', highlight: true });
+      }
+    }
+
+    if (this.tournamentSubmitResult && this.tournamentSubmitResult.success) {
+      items.push({ icon: '✅', text: '成绩已提交' });
+    }
+
+    if (result.archive && result.rank) {
+      items.push({ icon: '🎖️', text: '最终排名: #' + result.rank.rank +
+        ' (前' + result.rank.percentile + '%)', highlight: true });
+
+      if (result.rankBucket) {
+        items.push({ icon: '🏆', text: '评级: ' + result.rankBucket.label, highlight: true });
+      }
+
+      if (this.tournamentRewards && this.tournamentRewards.rewardTier) {
+        var reward = this.tournamentRewards.rewardTier;
+        if (reward.coins) items.push({ icon: '💰', text: '金币奖励: +' + reward.coins });
+        if (reward.seasonXP) items.push({ icon: '⭐', text: '赛季经验: +' + reward.seasonXP + ' XP' });
+        if (reward.parts && reward.parts.length > 0) {
+          items.push({ icon: '🔧', text: '零件奖励: x' + reward.parts.length });
+        }
+        if (reward.cars && reward.cars.length > 0) {
+          items.push({ icon: '🚗', text: '赛车奖励: x' + reward.cars.length });
+        }
+        if (reward.title) {
+          items.push({ icon: '🏅', text: '获得称号: ' + reward.title, highlight: true });
+        }
+
+        if (this.tournamentRewards.claimed) {
+          items.push({ icon: '✅', text: '奖励已领取' });
+        } else {
+          items.push({ icon: '🎁', text: '点击下方「领取奖励」按钮领取!', highlight: true });
+        }
+      }
+    }
+
+    var hasRewards = items.length > 1;
+    if (!hasRewards) return;
+
+    var panelW = 380;
+    var panelH = items.length * 32 + 30;
+
+    var panel = this.add.container(width / 2, panelY);
+    panel.setDepth(100);
+
+    var bg = this.add.graphics();
+    bg.fillStyle(0x1a1a2e, 0.95);
+    bg.fillRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 14);
+    bg.lineStyle(3, 0x009688, 0.9);
+    bg.strokeRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 14);
+    panel.add(bg);
+
+    for (var k = 0; k < items.length; k++) {
+      var item = items[k];
+      var y = -panelH / 2 + 20 + k * 32;
+      var itemText = this.add.text(-panelW / 2 + 20, y, item.icon + ' ' + item.text, {
+        fontSize: item.header ? '18px' : '14px',
+        fontWeight: item.header ? 'bold' : 'normal',
+        color: item.highlight ? '#ffd700' : (item.header ? '#009688' : '#ffffff')
+      }).setOrigin(0, 0.5);
+      panel.add(itemText);
+
+      if (item.header) {
+        var line = this.add.graphics();
+        line.lineStyle(1, 0x009688, 0.3);
+        line.beginPath();
+        line.moveTo(-panelW / 2 + 20, y + 14);
+        line.lineTo(panelW / 2 - 20, y + 14);
+        line.strokePath();
+        panel.add(line);
+      }
+    }
+
+    panel.setAlpha(0);
+    this.tweens.add({
+      targets: panel,
+      alpha: 1,
+      y: panelY,
+      duration: 500,
+      delay: 400,
       ease: 'Back.easeOut'
     });
   };

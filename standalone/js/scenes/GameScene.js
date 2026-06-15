@@ -16,6 +16,8 @@
     this.dataManager.init();
     this.unlockMgr = this.dataManager.getUnlockManager();
     this.seasonMode = !!(data && data.seasonMode);
+    this.tournamentMode = !!(data && data.tournamentMode);
+    this.tournamentId = data && data.tournamentId ? data.tournamentId : null;
     this.chapterId = data && data.chapterId ? data.chapterId : null;
     this.nodeId = data && data.nodeId ? data.nodeId : null;
     this.nodeType = data && data.nodeType ? data.nodeType : 'race';
@@ -25,6 +27,9 @@
       this.eventLevelMgr = this.dataManager.getEventLevelManager();
       this.seasonDM = this.dataManager.getSeasonDataManager();
       this.rewardSystem = this.dataManager.getRewardSystem();
+    }
+    if (this.tournamentMode) {
+      this.tournamentMgr = this.dataManager.getTournamentManager();
     }
   };
 
@@ -3487,6 +3492,25 @@
       }
     }
 
+    var tournamentSubmitResult = null;
+    if (this.tournamentMode && this.tournamentId) {
+      try {
+        var tournamentRunStats = {
+          totalScore: this.scoreManager.getScore(),
+          time: this.scoreManager.getElapsedTime(),
+          isComplete: win,
+          distance: this.carPhysics ? Math.floor(this.carPhysics.car.x) : 0
+        };
+        tournamentSubmitResult = this.tournamentMgr.submitTournamentResult(
+          this.tournamentId,
+          tournamentRunStats,
+          starRating
+        );
+      } catch (e) {
+        console.warn('[GameScene] tournament mode processing error:', e);
+      }
+    }
+
     this.time.delayedCall(600, function() {
       self.scene.start('GameOverScene', {
         level: self.level,
@@ -3507,7 +3531,10 @@
         replayAnalysis: replayAnalysis,
         coinReward: coinReward,
         seasonMode: self.seasonMode,
-        seasonResult: seasonResult
+        seasonResult: seasonResult,
+        tournamentMode: self.tournamentMode,
+        tournamentId: self.tournamentId,
+        tournamentSubmitResult: tournamentSubmitResult
       });
     });
   };

@@ -19,6 +19,7 @@
     this.seasonDM = this.dataManager.getSeasonDataManager();
     this.carGrowth = this.dataManager.getCarGrowthSystem();
     this.taskCenter = this.dataManager.getTaskCenterManager();
+    this.tournamentMgr = this.dataManager.getTournamentManager();
 
     var width = this.scale.width;
     var height = this.scale.height;
@@ -29,6 +30,7 @@
     this.createSeasonProgress(width, height);
     this.createSeasonEntryButton(width, height);
     this.createTaskCenterButton(width, height);
+    this.createTournamentButton(width, height);
     this.createInstructions(width, height);
     this.createControlsHint(width, height);
     this.createGarageButton(width, height);
@@ -294,6 +296,102 @@
     });
 
     this.taskCenterButton = container;
+  };
+
+  proto.createTournamentButton = function(width, height) {
+    var btnX = 80;
+    var btnY = 445;
+    var btnW = 120;
+    var btnH = 80;
+
+    var container = this.add.container(btnX, btnY);
+    container.setSize(btnW, btnH);
+
+    var tournamentState = this.tournamentMgr.getTournamentIconState();
+
+    var gfx = this.add.graphics();
+    gfx.fillStyle(0x009688, 0.95);
+    gfx.fillRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 14);
+    gfx.lineGradientStyle(3, 0x4db6ac, 0x4db6ac, 0x00796b, 0x00796b, 1);
+    gfx.strokeRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 14);
+
+    var icon = this.add.text(0, -12, '🏟️', {
+      fontSize: '32px'
+    }).setOrigin(0.5);
+
+    var label = this.add.text(0, 18, '赛事大厅', {
+      fontSize: '14px',
+      fontWeight: 'bold',
+      color: '#ffffff',
+      stroke: '#004d40',
+      strokeThickness: 2
+    }).setOrigin(0.5);
+
+    container.add([gfx, icon, label]);
+
+    if (tournamentState.hasClaimable) {
+      var badgeBg = this.add.graphics();
+      badgeBg.fillStyle(0xe94560, 1);
+      badgeBg.fillCircle(btnW / 2 - 10, -btnH / 2 + 10, 16);
+      badgeBg.lineStyle(2, 0xffffff, 1);
+      badgeBg.strokeCircle(btnW / 2 - 10, -btnH / 2 + 10, 16);
+      container.add(badgeBg);
+
+      var badgeText = this.add.text(btnW / 2 - 10, -btnH / 2 + 10, tournamentState.claimableCount > 99 ? '99+' : tournamentState.claimableCount, {
+        fontSize: '14px',
+        fontWeight: 'bold',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+      container.add(badgeText);
+
+      this.tweens.add({
+        targets: [badgeBg, badgeText],
+        scale: 1.1,
+        duration: 600,
+        ease: 'Sine.easeInOut',
+        yoyo: true,
+        repeat: -1
+      });
+    } else if (tournamentState.activeCount > 0) {
+      var activeBadge = this.add.graphics();
+      activeBadge.fillStyle(0x4caf50, 1);
+      activeBadge.fillCircle(btnW / 2 - 10, -btnH / 2 + 10, 14);
+      activeBadge.lineStyle(2, 0xffffff, 1);
+      activeBadge.strokeCircle(btnW / 2 - 10, -btnH / 2 + 10, 14);
+      container.add(activeBadge);
+
+      var activeText = this.add.text(btnW / 2 - 10, -btnH / 2 + 10, '' + tournamentState.activeCount, {
+        fontSize: '12px',
+        fontWeight: 'bold',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+      container.add(activeText);
+    }
+
+    var self = this;
+    container.setInteractive(
+      new Phaser.Geom.Rectangle(-btnW / 2, -btnH / 2, btnW, btnH),
+      Phaser.Geom.Rectangle.Contains
+    );
+    container.on('pointerover', function() {
+      self.tweens.add({ targets: this, scale: 1.08, duration: 150, ease: 'Power2' });
+    });
+    container.on('pointerout', function() {
+      self.tweens.add({ targets: this, scale: 1.0, duration: 150, ease: 'Power2' });
+    });
+    container.on('pointerdown', function() {
+      self.tweens.add({
+        targets: this,
+        scale: 0.95,
+        duration: 80,
+        yoyo: true,
+        onComplete: function() {
+          self.scene.start('TournamentScene');
+        }
+      });
+    });
+
+    this.tournamentButton = container;
   };
 
   proto.createInstructions = function(width, height) {
