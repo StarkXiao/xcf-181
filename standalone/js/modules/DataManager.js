@@ -146,6 +146,18 @@
         totalCoinsEarned: 0,
         totalTicketsSpent: 0
       }
+    },
+    shop: {
+      dailyItems: [],
+      dailyRefreshTime: 0,
+      dailyRefreshCount: 0,
+      lastFreeRefreshDay: null,
+      freeRefreshUsedToday: 0,
+      dailyClaims: {},
+      limitedPurchases: {}
+    },
+    inventory: {
+      items: {}
     }
   };
 
@@ -215,6 +227,7 @@
       this._taskCenterManager = null;
       this._tournamentManager = null;
       this._playerProfileManager = null;
+      this._shopManager = null;
       this._initialized = true;
         this._emit('initialized', { version: this._data._version });
         return true;
@@ -577,6 +590,14 @@
         this._playerProfileManager = new MountainRacer.PlayerProfileManager(this);
       }
       return this._playerProfileManager;
+    };
+
+    proto.getShopManager = function() {
+      if (!this._initialized) this.init();
+      if (!this._shopManager) {
+        this._shopManager = new MountainRacer.ShopManager(this);
+      }
+      return this._shopManager;
     };
 
     proto.on = function(event, callback) {

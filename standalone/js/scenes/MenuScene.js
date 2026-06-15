@@ -32,6 +32,7 @@
     this.createTaskCenterButton(width, height);
     this.createTournamentButton(width, height);
     this.createPlayerProfileButton(width, height);
+    this.createShopButton(width, height);
     this.createInstructions(width, height);
     this.createControlsHint(width, height);
     this.createGarageButton(width, height);
@@ -447,6 +448,102 @@
     });
 
     this.playerProfileButton = container;
+  };
+
+  proto.createShopButton = function(width, height) {
+    var btnX = width / 2 + 210;
+    var btnY = 540;
+    var btnW = 130;
+    var btnH = 50;
+
+    var container = this.add.container(btnX, btnY);
+    container.setSize(btnW, btnH);
+
+    var shopMgr = this.dataManager.getShopManager();
+    var dailyItems = shopMgr.getDailyShop();
+    var hasDiscount = false;
+    for (var di = 0; di < dailyItems.length; di++) {
+      if (dailyItems[di].discount > 0) { hasDiscount = true; break; }
+    }
+    var limitedPacks = shopMgr.getAvailableLimitedPacks();
+
+    var gfx = this.add.graphics();
+    gfx.fillStyle(0xff9800, 0.95);
+    gfx.fillRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 14);
+    gfx.lineGradientStyle(3, 0xffb74d, 0xffb74d, 0xe65100, 0xe65100, 1);
+    gfx.strokeRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 14);
+
+    var icon = this.add.text(-btnW / 2 + 18, 0, '🏪', {
+      fontSize: '24px'
+    }).setOrigin(0, 0.5);
+
+    var label = this.add.text(8, -8, '游戏商店', {
+      fontSize: '14px',
+      fontWeight: 'bold',
+      color: '#ffffff',
+      stroke: '#bf360c',
+      strokeThickness: 2
+    }).setOrigin(0, 0.5);
+
+    container.add([gfx, icon, label]);
+
+    if (hasDiscount || limitedPacks.length > 0) {
+      var hotBadge = this.add.graphics();
+      hotBadge.fillStyle(0xf44336, 1);
+      hotBadge.fillCircle(btnW / 2 - 10, -btnH / 2 + 10, 10);
+      hotBadge.lineStyle(2, 0xffffff, 1);
+      hotBadge.strokeCircle(btnW / 2 - 10, -btnH / 2 + 10, 10);
+      container.add(hotBadge);
+
+      var hotText = this.add.text(btnW / 2 - 10, -btnH / 2 + 10, '!', {
+        fontSize: '12px',
+        fontWeight: 'bold',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+      container.add(hotText);
+
+      this.tweens.add({
+        targets: [hotBadge, hotText],
+        scale: 1.2,
+        duration: 600,
+        ease: 'Sine.easeInOut',
+        yoyo: true,
+        repeat: -1
+      });
+    }
+
+    var hintText = this.add.text(8, 10,
+      '每日特惠', {
+        fontSize: '10px',
+        fontWeight: 'bold',
+        color: '#ffe0b2'
+      }).setOrigin(0, 0.5);
+    container.add(hintText);
+
+    var self = this;
+    container.setInteractive(
+      new Phaser.Geom.Rectangle(-btnW / 2, -btnH / 2, btnW, btnH),
+      Phaser.Geom.Rectangle.Contains
+    );
+    container.on('pointerover', function() {
+      self.tweens.add({ targets: this, scale: 1.08, duration: 150, ease: 'Power2' });
+    });
+    container.on('pointerout', function() {
+      self.tweens.add({ targets: this, scale: 1.0, duration: 150, ease: 'Power2' });
+    });
+    container.on('pointerdown', function() {
+      self.tweens.add({
+        targets: this,
+        scale: 0.95,
+        duration: 80,
+        yoyo: true,
+        onComplete: function() {
+          self.scene.start('ShopScene');
+        }
+      });
+    });
+
+    this.shopButton = container;
   };
 
   proto.createInstructions = function(width, height) {
