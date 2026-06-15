@@ -26,6 +26,7 @@
     this.previousBestStats = data.previousBestStats || null;
     this.replayComparison = data.replayComparison || null;
     this.starRating = data.starRating || null;
+    this.replayAnalysis = data.replayAnalysis || null;
     this.activeTab = 'summary';
     this.highScoreAnimationPlayed = false;
     this.tabContentElements = [];
@@ -95,7 +96,7 @@
   proto.createResultPanel = function(width, height) {
     var panelW = 420;
     var needStarPanel = this.win && this.starRating;
-    var panelH = needStarPanel ? 980 : (this.win && this.detailedStats ? 780 : 430);
+    var panelH = needStarPanel ? 1060 : (this.win && this.detailedStats ? 860 : 430);
 
     var shadow = this.add.graphics();
     shadow.fillStyle(0x000000, 0.4);
@@ -626,13 +627,14 @@
   proto.createTabs = function(width, height) {
     var self = this;
     var tabY = this.starRating ? (height / 2 + 105) : (height / 2 - 95);
-    var tabWidth = 120;
+    var tabWidth = 100;
     var tabHeight = 32;
-    var tabGap = 8;
+    var tabGap = 6;
     var tabs = [
-      { id: 'summary', label: '📊 总览', color: 0x4caf50 },
-      { id: 'replay', label: '🔄 重跑对比', color: 0x2196f3 },
-      { id: 'breakdown', label: '📈 成绩拆解', color: 0xff6b35 }
+      { id: 'summary', label: '📊总览', color: 0x4caf50 },
+      { id: 'replayReview', label: '🔍复盘', color: 0x9c27b0 },
+      { id: 'replay', label: '🔄对比', color: 0x2196f3 },
+      { id: 'breakdown', label: '📈拆解', color: 0xff6b35 }
     ];
 
     var totalTabW = tabs.length * tabWidth + (tabs.length - 1) * tabGap;
@@ -714,6 +716,9 @@
       case 'summary':
         this.createSummaryTab(this.scale.width, this.scale.height);
         break;
+      case 'replayReview':
+        this.createReplayReviewTab(this.scale.width, this.scale.height);
+        break;
       case 'replay':
         this.createReplayComparisonTab(this.scale.width, this.scale.height);
         break;
@@ -738,6 +743,444 @@
 
   proto.createSummaryTab = function(width, height) {
     this.createDetailedStats(width, height);
+  };
+
+  proto.createReplayReviewTab = function(width, height) {
+    var panelW = 420;
+    var contentY = height / 2 - 70;
+    var leftX = width / 2 - panelW / 2 + 15;
+
+    if (!this.replayAnalysis || !this.replayAnalysis.speedCurve || this.replayAnalysis.speedCurve.length === 0) {
+      var noData = this.add.text(width / 2, contentY + 50, '📋 暂无复盘数据', {
+        fontSize: '16px',
+        color: '#999999',
+        fontStyle: 'italic'
+      }).setOrigin(0.5);
+      this.addTabElement(noData);
+      return;
+    }
+
+    var ra = this.replayAnalysis;
+
+    var headerBg = this.add.graphics();
+    headerBg.fillStyle(0xf3e5f5, 1);
+    headerBg.fillRoundedRect(leftX, contentY, panelW - 30, 36, 8);
+    this.addTabElement(headerBg);
+
+    var headerText = this.add.text(width / 2, contentY + 18, '🔍 关卡复盘分析', {
+      fontSize: '15px',
+      fontWeight: 'bold',
+      color: '#9c27b0'
+    }).setOrigin(0.5);
+    this.addTabElement(headerText);
+
+    this.createSpeedCurveSection(width, contentY + 48, panelW, ra);
+    this.createHitNodesSection(width, contentY + 48 + 160, panelW, ra);
+    this.createMistakesSection(width, contentY + 48 + 260, panelW, ra);
+    this.createBestSegmentSection(width, contentY + 48 + 370, panelW, ra);
+  };
+
+  proto.createSpeedCurveSection = function(width, startY, panelW, ra) {
+    var leftX = width / 2 - panelW / 2 + 15;
+    var chartW = panelW - 30;
+    var chartH = 90;
+
+    var sectionBg = this.add.graphics();
+    sectionBg.fillStyle(0xfafafa, 1);
+    sectionBg.fillRoundedRect(leftX, startY, chartW, 148, 8);
+    sectionBg.lineStyle(1, 0xe0e0e0, 1);
+    sectionBg.strokeRoundedRect(leftX, startY, chartW, 148, 8);
+    this.addTabElement(sectionBg);
+
+    var title = this.add.text(leftX + 10, startY + 10, '📈 速度曲线', {
+      fontSize: '13px',
+      fontWeight: 'bold',
+      color: '#333333'
+    }).setOrigin(0, 0.5);
+    this.addTabElement(title);
+
+    var ss = ra.speedStats;
+    if (ss) {
+      var statsText = this.add.text(leftX + chartW - 5, startY + 10,
+        '最高 ' + ss.max + ' / 均速 ' + ss.avg + ' km/h', {
+          fontSize: '10px',
+          color: '#2196f3'
+        }).setOrigin(1, 0.5);
+      this.addTabElement(statsText);
+    }
+
+    var chartBg = this.add.graphics();
+    chartBg.fillStyle(0xf5f5f5, 1);
+    chartBg.fillRoundedRect(leftX + 10, startY + 28, chartW - 20, chartH, 4);
+    chartBg.lineStyle(1, 0xe0e0e0, 1);
+    chartBg.strokeRoundedRect(leftX + 10, startY + 28, chartW - 20, chartH, 4);
+    this.addTabElement(chartBg);
+
+    var samples = ra.speedCurve;
+    if (samples.length < 2) return;
+
+    var maxSpeed = 1;
+    for (var i = 0; i < samples.length; i++) {
+      if (samples[i].speed > maxSpeed) maxSpeed = samples[i].speed;
+    }
+    maxSpeed = Math.ceil(maxSpeed / 20) * 20;
+
+    var drawAreaX = leftX + 10;
+    var drawAreaW = chartW - 20;
+    var drawAreaY = startY + 28;
+    var drawAreaH = chartH;
+
+    for (var g = 1; g <= 3; g++) {
+      var gy = drawAreaY + drawAreaH - (g / 4) * drawAreaH;
+      var gridLine = this.add.graphics();
+      gridLine.lineStyle(1, 0xe0e0e0, 0.5);
+      gridLine.beginPath();
+      gridLine.moveTo(drawAreaX, gy);
+      gridLine.lineTo(drawAreaX + drawAreaW, gy);
+      gridLine.strokePath();
+      this.addTabElement(gridLine);
+
+      var gridLabel = this.add.text(drawAreaX - 2, gy, Math.round(maxSpeed * g / 4) + '', {
+        fontSize: '8px',
+        color: '#aaaaaa'
+      }).setOrigin(1, 0.5);
+      this.addTabElement(gridLabel);
+    }
+
+    var lineGfx = this.add.graphics();
+    lineGfx.lineStyle(2, 0x2196f3, 0.9);
+    lineGfx.beginPath();
+
+    for (var s = 0; s < samples.length; s++) {
+      var sample = samples[s];
+      var px = drawAreaX + sample.pct * drawAreaW;
+      var py = drawAreaY + drawAreaH - (sample.speed / maxSpeed) * drawAreaH;
+      if (s === 0) lineGfx.moveTo(px, py);
+      else lineGfx.lineTo(px, py);
+    }
+    lineGfx.strokePath();
+    this.addTabElement(lineGfx);
+
+    var fillGfx = this.add.graphics();
+    fillGfx.fillStyle(0x2196f3, 0.08);
+    fillGfx.beginPath();
+    fillGfx.moveTo(drawAreaX, drawAreaY + drawAreaH);
+    for (var f = 0; f < samples.length; f++) {
+      var fSample = samples[f];
+      var fpx = drawAreaX + fSample.pct * drawAreaW;
+      var fpy = drawAreaY + drawAreaH - (fSample.speed / maxSpeed) * drawAreaH;
+      fillGfx.lineTo(fpx, fpy);
+    }
+    fillGfx.lineTo(drawAreaX + drawAreaW, drawAreaY + drawAreaH);
+    fillGfx.closePath();
+    fillGfx.fillPath();
+    this.addTabElement(fillGfx);
+
+    var healthGfx = this.add.graphics();
+    healthGfx.lineStyle(1.5, 0xe91e63, 0.5);
+    healthGfx.beginPath();
+    for (var h = 0; h < samples.length; h++) {
+      var hSample = samples[h];
+      var hpx = drawAreaX + hSample.pct * drawAreaW;
+      var hpy = drawAreaY + drawAreaH - (hSample.health / 100) * drawAreaH;
+      if (h === 0) healthGfx.moveTo(hpx, hpy);
+      else healthGfx.lineTo(hpx, hpy);
+    }
+    healthGfx.strokePath();
+    this.addTabElement(healthGfx);
+
+    for (var n = 0; n < ra.hitNodes.length; n++) {
+      var node = ra.hitNodes[n];
+      var npx = drawAreaX + node.pct * drawAreaW;
+      var npy = drawAreaY + drawAreaH - (node.health / 100) * drawAreaH;
+
+      var hitMarker = this.add.graphics();
+      hitMarker.fillStyle(0xf44336, 0.9);
+      hitMarker.fillCircle(0, 0, 5);
+      hitMarker.lineStyle(2, 0xff6b6b, 0.6);
+      hitMarker.strokeCircle(0, 0, 7);
+      hitMarker.x = npx;
+      hitMarker.y = npy;
+      this.addTabElement(hitMarker);
+    }
+
+    var legendY = startY + 28 + chartH + 5;
+    var legendSpeed = this.add.text(leftX + 15, legendY, '— 速度', {
+      fontSize: '9px',
+      color: '#2196f3',
+      fontWeight: 'bold'
+    }).setOrigin(0, 0.5);
+    this.addTabElement(legendSpeed);
+
+    var legendHealth = this.add.text(leftX + 65, legendY, '— 生命', {
+      fontSize: '9px',
+      color: '#e91e63',
+      fontWeight: 'bold'
+    }).setOrigin(0, 0.5);
+    this.addTabElement(legendHealth);
+
+    var legendHit = this.add.text(leftX + 115, legendY, '● 受击', {
+      fontSize: '9px',
+      color: '#f44336',
+      fontWeight: 'bold'
+    }).setOrigin(0, 0.5);
+    this.addTabElement(legendHit);
+
+    var pctLabels = ['0%', '25%', '50%', '75%', '100%'];
+    for (var p = 0; p < pctLabels.length; p++) {
+      var ppx = drawAreaX + (p / (pctLabels.length - 1)) * drawAreaW;
+      var pctLabel = this.add.text(ppx, drawAreaY + drawAreaH + 3, pctLabels[p], {
+        fontSize: '8px',
+        color: '#bbbbbb'
+      }).setOrigin(0.5, 0);
+      this.addTabElement(pctLabel);
+    }
+
+    if (ra.bestSegment) {
+      var bs = ra.bestSegment;
+      var highlightGfx = this.add.graphics();
+      highlightGfx.fillStyle(0x4caf50, 0.12);
+      var hlX = drawAreaX + bs.startPct * drawAreaW;
+      var hlW = (bs.endPct - bs.startPct) * drawAreaW;
+      highlightGfx.fillRoundedRect(hlX, drawAreaY, hlW, drawAreaH, 3);
+      highlightGfx.lineStyle(2, 0x4caf50, 0.6);
+      highlightGfx.beginPath();
+      highlightGfx.moveTo(hlX, drawAreaY);
+      highlightGfx.lineTo(hlX, drawAreaY + drawAreaH);
+      highlightGfx.strokePath();
+      highlightGfx.beginPath();
+      highlightGfx.moveTo(hlX + hlW, drawAreaY);
+      highlightGfx.lineTo(hlX + hlW, drawAreaY + drawAreaH);
+      highlightGfx.strokePath();
+      this.addTabElement(highlightGfx);
+
+      var starIcon = this.add.text(hlX + hlW / 2, drawAreaY + 8, '⭐', {
+        fontSize: '10px'
+      }).setOrigin(0.5);
+      this.addTabElement(starIcon);
+    }
+  };
+
+  proto.createHitNodesSection = function(width, startY, panelW, ra) {
+    var leftX = width / 2 - panelW / 2 + 15;
+    var sectionW = panelW - 30;
+
+    var hitNodes = ra.hitNodes || [];
+    if (hitNodes.length === 0) {
+      var noHit = this.add.text(leftX, startY + 10, '🛡️ 本局未受击 — 完美表现!', {
+        fontSize: '12px',
+        color: '#4caf50',
+        fontWeight: 'bold'
+      }).setOrigin(0, 0.5);
+      this.addTabElement(noHit);
+      return;
+    }
+
+    var title = this.add.text(leftX, startY + 10, '💥 受击节点 (' + hitNodes.length + '次)', {
+      fontSize: '13px',
+      fontWeight: 'bold',
+      color: '#f44336'
+    }).setOrigin(0, 0.5);
+    this.addTabElement(title);
+
+    var typeIcons = {
+      'rock': '🪨',
+      'barrel': '🛢️',
+      'crate': '📦',
+      'sign': '🪧',
+      'dangerZone': '⚠️',
+      'rollover': '🔄'
+    };
+    var typeLabels = {
+      'rock': '撞石',
+      'barrel': '油桶',
+      'crate': '木箱',
+      'sign': '路牌',
+      'dangerZone': '危险区',
+      'rollover': '翻车'
+    };
+
+    var displayCount = Math.min(hitNodes.length, 5);
+    for (var i = 0; i < displayCount; i++) {
+      var node = hitNodes[i];
+      var y = startY + 32 + i * 22;
+
+      var rowBg = this.add.graphics();
+      rowBg.fillStyle(i % 2 === 0 ? 0xfef0f0 : 0xfafafa, 1);
+      rowBg.fillRoundedRect(leftX, y - 9, sectionW, 20, 4);
+      this.addTabElement(rowBg);
+
+      var icon = typeIcons[node.type] || '💥';
+      var iconT = this.add.text(leftX + 8, y, icon, {
+        fontSize: '11px'
+      }).setOrigin(0, 0.5);
+      this.addTabElement(iconT);
+
+      var label = (typeLabels[node.type] || node.type) + ' -' + node.damage;
+      var labelT = this.add.text(leftX + 28, y, label, {
+        fontSize: '11px',
+        fontWeight: 'bold',
+        color: '#f44336'
+      }).setOrigin(0, 0.5);
+      this.addTabElement(labelT);
+
+      var distPct = Math.floor(node.pct * 100);
+      var detail = '位置 ' + distPct + '% | 生命 ' + node.health + '%';
+      if (node.combo > 0) detail += ' | 连击 x' + node.combo;
+      var detailT = this.add.text(leftX + sectionW - 5, y, detail, {
+        fontSize: '9px',
+        color: '#999999'
+      }).setOrigin(1, 0.5);
+      this.addTabElement(detailT);
+    }
+
+    if (hitNodes.length > displayCount) {
+      var moreT = this.add.text(leftX + 10, startY + 32 + displayCount * 22,
+        '...还有 ' + (hitNodes.length - displayCount) + ' 次受击', {
+          fontSize: '10px',
+          color: '#bbbbbb',
+          fontStyle: 'italic'
+        }).setOrigin(0, 0.5);
+      this.addTabElement(moreT);
+    }
+  };
+
+  proto.createMistakesSection = function(width, startY, panelW, ra) {
+    var leftX = width / 2 - panelW / 2 + 15;
+    var sectionW = panelW - 30;
+
+    var mistakes = ra.keyMistakes || [];
+    if (mistakes.length === 0) {
+      var noMistake = this.add.text(leftX, startY + 10, '✅ 未检测到关键失误 — 表现优秀!', {
+        fontSize: '12px',
+        color: '#4caf50',
+        fontWeight: 'bold'
+      }).setOrigin(0, 0.5);
+      this.addTabElement(noMistake);
+      return;
+    }
+
+    var title = this.add.text(leftX, startY + 10, '⚠️ 关键失误点 (' + mistakes.length + '处)', {
+      fontSize: '13px',
+      fontWeight: 'bold',
+      color: '#ff9800'
+    }).setOrigin(0, 0.5);
+    this.addTabElement(title);
+
+    var displayCount = Math.min(mistakes.length, 4);
+    for (var i = 0; i < displayCount; i++) {
+      var m = mistakes[i];
+      var y = startY + 32 + i * 26;
+
+      var severityColor = m.severity === 'major' ? 0xfef0f0 : 0xfff8e1;
+      var borderColor = m.severity === 'major' ? 0xf44336 : 0xff9800;
+
+      var rowBg = this.add.graphics();
+      rowBg.fillStyle(severityColor, 1);
+      rowBg.fillRoundedRect(leftX, y - 10, sectionW, 24, 4);
+      rowBg.lineStyle(2, borderColor, 0.4);
+      rowBg.strokeRoundedRect(leftX, y - 10, sectionW, 24, 4);
+      this.addTabElement(rowBg);
+
+      var sevIcon = m.severity === 'major' ? '🔴' : '🟡';
+      var sevT = this.add.text(leftX + 8, y, sevIcon, {
+        fontSize: '11px'
+      }).setOrigin(0, 0.5);
+      this.addTabElement(sevT);
+
+      var mLabel = m.label + ' (位置' + Math.floor(m.pct * 100) + '%)';
+      var mLabelT = this.add.text(leftX + 26, y - 3, mLabel, {
+        fontSize: '11px',
+        fontWeight: 'bold',
+        color: borderColor === 0xf44336 ? '#c62828' : '#e65100'
+      }).setOrigin(0, 0.5);
+      this.addTabElement(mLabelT);
+
+      var consequenceStr = m.consequences.join(', ');
+      var conT = this.add.text(leftX + 26, y + 8, consequenceStr, {
+        fontSize: '9px',
+        color: '#999999'
+      }).setOrigin(0, 0.5);
+      this.addTabElement(conT);
+
+      var dmgT = this.add.text(leftX + sectionW - 5, y, '-' + m.damage + ' HP', {
+        fontSize: '10px',
+        fontWeight: 'bold',
+        color: '#f44336'
+      }).setOrigin(1, 0.5);
+      this.addTabElement(dmgT);
+    }
+  };
+
+  proto.createBestSegmentSection = function(width, startY, panelW, ra) {
+    var leftX = width / 2 - panelW / 2 + 15;
+    var sectionW = panelW - 30;
+
+    var bs = ra.bestSegment;
+    if (!bs) {
+      var noBest = this.add.text(leftX, startY + 10, '📏 数据不足，无法识别最佳路段', {
+        fontSize: '12px',
+        color: '#999999',
+        fontStyle: 'italic'
+      }).setOrigin(0, 0.5);
+      this.addTabElement(noBest);
+      return;
+    }
+
+    var sectionBg = this.add.graphics();
+    sectionBg.fillStyle(0xe8f5e9, 1);
+    sectionBg.fillRoundedRect(leftX, startY, sectionW, 80, 8);
+    sectionBg.lineStyle(2, 0x4caf50, 0.6);
+    sectionBg.strokeRoundedRect(leftX, startY, sectionW, 80, 8);
+    this.addTabElement(sectionBg);
+
+    var title = this.add.text(leftX + 10, startY + 12, '⭐ 最佳路段表现', {
+      fontSize: '13px',
+      fontWeight: 'bold',
+      color: '#2e7d32'
+    }).setOrigin(0, 0.5);
+    this.addTabElement(title);
+
+    var startPctStr = Math.floor(bs.startPct * 100) + '%';
+    var endPctStr = Math.floor(bs.endPct * 100) + '%';
+    var rangeT = this.add.text(leftX + 10, startY + 30,
+      '📍 路段范围: ' + startPctStr + ' → ' + endPctStr + ' (' + (bs.endDistance - bs.startDistance) + 'm)', {
+        fontSize: '11px',
+        color: '#333333'
+      }).setOrigin(0, 0.5);
+    this.addTabElement(rangeT);
+
+    var statsRow = [
+      { icon: '🚗', label: '均速 ' + bs.avgSpeed + ' km/h', color: '#2196f3' },
+      { icon: '❤️', label: bs.healthDelta >= 0 ? '无损' : '生命 ' + bs.healthDelta, color: bs.healthDelta >= 0 ? '#4caf50' : '#f44336' },
+      { icon: '🛡️', label: bs.hadHit ? '有受击' : '无伤通过', color: bs.hadHit ? '#ff9800' : '#4caf50' }
+    ];
+
+    for (var i = 0; i < statsRow.length; i++) {
+      var stat = statsRow[i];
+      var sx = leftX + 10 + i * 130;
+
+      var statIcon = this.add.text(sx, startY + 50, stat.icon, {
+        fontSize: '14px'
+      }).setOrigin(0, 0.5);
+      this.addTabElement(statIcon);
+
+      var statText = this.add.text(sx + 20, startY + 50, stat.label, {
+        fontSize: '11px',
+        fontWeight: 'bold',
+        color: stat.color
+      }).setOrigin(0, 0.5);
+      this.addTabElement(statText);
+    }
+
+    if (!bs.hadHit && bs.healthDelta >= 0) {
+      var perfectT = this.add.text(leftX + sectionW - 10, startY + 12, '💎 完美路段!', {
+        fontSize: '12px',
+        fontWeight: 'bold',
+        color: '#ffd700'
+      }).setOrigin(1, 0.5);
+      this.addTabElement(perfectT);
+    }
   };
 
   proto.createReplayComparisonTab = function(width, height) {
@@ -1565,8 +2008,8 @@
     var btnW = 160;
     var btnH = 48;
     var panelOffset = 160;
-    if (this.win && this.starRating) panelOffset = 410;
-    else if (this.win && this.detailedStats) panelOffset = 310;
+    if (this.win && this.starRating) panelOffset = 450;
+    else if (this.win && this.detailedStats) panelOffset = 350;
     var btnY = height / 2 + panelOffset;
     var gap = 20;
     var totalW = btnW * 3 + gap * 2;
