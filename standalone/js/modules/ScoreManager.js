@@ -113,6 +113,8 @@
     this.segmentInterval = 500;
 
     this.starRating = null;
+    this.weatherDifficultyModifier = 0;
+    this.weatherScoreBonus = 0;
     this.hiddenObjectives = {
       hiddenBranchesVisited: 0,
       totalHiddenBranches: 0,
@@ -318,7 +320,8 @@
     var branchConfig = this.getBranchConfig(this.currentBranch);
     var multiplier = branchConfig ? branchConfig.rewardMultiplier : 1.0;
     var comboMult = this.comboCount > 0 ? this.comboMultiplier : 1.0;
-    var weightedPoints = Math.floor(points * multiplier * comboMult);
+    var weatherBonus = 1.0 + this.weatherDifficultyModifier * 0.5;
+    var weightedPoints = Math.floor(points * multiplier * comboMult * weatherBonus);
     this.score += weightedPoints;
 
     if (type && this.bonusScores.hasOwnProperty(type)) {
@@ -327,6 +330,19 @@
     if (type === 'collectibleBonus') {
       this.collectibleValue += weightedPoints;
     }
+  };
+
+  proto.applyWeatherDifficulty = function(difficultyModifier) {
+    this.weatherDifficultyModifier = difficultyModifier;
+  };
+
+  proto.getWeatherDifficultyModifier = function() {
+    return this.weatherDifficultyModifier;
+  };
+
+  proto.addWeatherScoreBonus = function(points) {
+    this.weatherScoreBonus += points;
+    this.score += points;
   };
 
   proto.addCollectibleScore = function(value, type) {

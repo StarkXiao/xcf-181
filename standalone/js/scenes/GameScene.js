@@ -82,7 +82,11 @@
     this.collectibles = new MountainRacer.Collectibles(this, this.terrain, this.terrain.config);
     this.propSystem = new MountainRacer.PropSystem(this, this.terrain, this.terrain.config);
 
+    this.weatherSystem = new MountainRacer.WeatherSystem(this, this.level);
+    this.weatherSystem.create();
+
     this.createHUD(width, height);
+    this.createWeatherHUD(width, height);
     this.createPropHUD(width, height);
     this.createPauseButton(width);
     this.createBranchMinimap(width, height);
@@ -241,6 +245,131 @@
       fontWeight: 'bold',
       color: '#f44336'
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(501);
+  };
+
+  proto.createWeatherHUD = function(width, height) {
+    var wx = width - 160;
+    var wy = 56;
+
+    this.weatherContainer = this.add.container(wx, wy);
+    this.weatherContainer.setScrollFactor(0);
+    this.weatherContainer.setDepth(501);
+
+    var bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.5);
+    bg.fillRoundedRect(-75, -12, 150, 26, 6);
+    this.weatherContainer.add(bg);
+
+    this.weatherIconText = this.add.text(-65, 0, '☀️', {
+      fontSize: '14px'
+    }).setOrigin(0, 0.5);
+    this.weatherContainer.add(this.weatherIconText);
+
+    this.weatherNameText = this.add.text(-42, 0, '晴天', {
+      fontSize: '12px',
+      fontWeight: 'bold',
+      color: '#ffffff'
+    }).setOrigin(0, 0.5);
+    this.weatherContainer.add(this.weatherNameText);
+
+    this.weatherFrictionText = this.add.text(30, 0, '', {
+      fontSize: '10px',
+      color: '#aaaaaa'
+    }).setOrigin(0, 0.5);
+    this.weatherContainer.add(this.weatherFrictionText);
+
+    this.weatherUpcomingText = this.add.text(width / 2, 70, '', {
+      fontSize: '12px',
+      fontWeight: 'bold',
+      color: '#ff9800',
+      stroke: '#000000',
+      strokeThickness: 2
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(501);
+
+    this.weatherAlertText = this.add.text(width / 2, 90, '', {
+      fontSize: '13px',
+      fontWeight: 'bold',
+      color: '#ff5722',
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(502);
+
+    this._lastWeatherId = 'clear';
+    this._weatherAlertTimer = 0;
+  };
+
+  proto.updateWeatherHUD = function() {
+    if (!this.weatherSystem) return;
+    var config = this.weatherSystem.getWeatherConfig();
+    var weatherId = this.weatherSystem.getCurrentWeatherId();
+
+    if (this.weatherIconText) {
+      this.weatherIconText.setText(config.icon);
+    }
+    if (this.weatherNameText) {
+      this.weatherNameText.setText(config.name);
+    }
+    if (this.weatherFrictionText) {
+      var friction = this.weatherSystem.currentFriction;
+      if (friction < 0.99) {
+        var pct = Math.round((1 - friction) * 100);
+        this.weatherFrictionText.setText('滑↓' + pct + '%');
+        this.weatherFrictionText.setColor(friction < 0.5 ? '#ff5722' : '#ff9800');
+      } else {
+        this.weatherFrictionText.setText('');
+      }
+    }
+
+    if (weatherId !== this._lastWeatherId) {
+      this._lastWeatherId = weatherId;
+      this.showWeatherTransitionAlert(config);
+    }
+
+    var carX = this.carPhysics ? this.carPhysics.car.x : 0;
+    var upcoming = this.weatherSystem.getUpcomingWeather(carX);
+    if (this.weatherUpcomingText) {
+      if (upcoming && upcoming.distance < 800) {
+        this.weatherUpcomingText.setText(upcoming.icon + ' 前方 ' + Math.round(upcoming.distance) + 'm ' + upcoming.name);
+        this.weatherUpcomingText.setAlpha(1);
+      } else {
+        this.weatherUpcomingText.setAlpha(0);
+      }
+    }
+
+    if (this._weatherAlertTimer > 0) {
+      this._weatherAlertTimer -= 16;
+      if (this._weatherAlertTimer <= 0 && this.weatherAlertText) {
+        this.weatherAlertText.setAlpha(0);
+      }
+    }
+  };
+
+  proto.showWeatherTransitionAlert = function(config) {
+    if (!this.weatherAlertText) return;
+    var msg = config.icon + ' ' + config.name + '来袭!';
+
+    if (config.frictionMultiplier < 0.5) {
+      msg += ' 路面极滑!';
+    } else if (config.frictionMultiplier < 0.7) {
+      msg += ' 注意路滑!';
+    }
+    if (config.visibilityRange < 0.4) {
+      msg += ' 能见度低!';
+    }
+    if (config.damagePerSecond > 0) {
+      msg += ' 有伤害!';
+    }
+    if (config.windForce > 50) {
+      msg += ' 强风!';
+    }
+
+    this.weatherAlertText.setText(msg);
+    this.weatherAlertText.setAlpha(1);
+    this._weatherAlertTimer = 3000;
+
+    if (this.carPhysics) {
+      this.scoreManager.addWeatherScoreBonus(Math.floor(config.difficultyModifier * 100));
+    }
   };
 
   proto.createPropHUD = function(width, height) {
@@ -2365,6 +2494,35 @@
     this.damageCooldown = Math.max(0, this.damageCooldown - delta);
     this.rampCooldown = Math.max(0, this.rampCooldown - delta);
 
+    if (this.weatherSystem) {
+      this.weatherSystem.update(carX, delta, this.carPhysics);
+
+      var weatherFriction = this.weatherSystem.currentFriction;
+      this.carPhysics.applyWeatherFriction(weatherFriction);
+
+      this.scoreManager.applyWeatherDifficulty(this.weatherSystem.getDifficultyModifier());
+
+      var weatherDmg = this.weatherSystem.consumeWeatherDamage();
+      if (weatherDmg > 0) {
+        var wDmgActual = weatherDmg;
+        if (this.propSystem) {
+          wDmgActual = this.propSystem.processDamage(weatherDmg);
+        }
+        if (wDmgActual > 0) {
+          this.scoreManager.takeDamage(wDmgActual);
+          if (this.scoreManager.comboBreakReason === 'damage') {
+            this.showFloatingText(carX, this.carPhysics.car.y - 100, '💥 恶劣天气伤害!', 0xff5722);
+          }
+        }
+      }
+
+      if (this.weatherSystem.isThunderShaking()) {
+        this.screenShake(8, 300);
+      }
+
+      this.updateWeatherHUD();
+    }
+
     this.scoreManager.updateRolloverCooldown(delta);
     this.checkRollover(carX, delta);
     this.updateRolloverCooldownHUD(delta);
@@ -3796,6 +3954,10 @@
     if (this.propSystem) {
       this.propSystem.destroy();
       this.propSystem = null;
+    }
+    if (this.weatherSystem) {
+      this.weatherSystem.destroy();
+      this.weatherSystem = null;
     }
     if (this.inputManager) {
       this.inputManager.destroy();

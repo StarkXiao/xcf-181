@@ -75,6 +75,9 @@
     this._speedBoostActive = false;
     this._speedBoostMultiplier = 1;
     this._speedBoostEndTime = 0;
+
+    this.weatherFrictionMultiplier = 1.0;
+    this.weatherWindForce = 0;
   };
 
   var proto = MountainRacer.CarPhysics.prototype;
@@ -370,8 +373,8 @@
         this.vy -= forwardDirY * this.brakeAcceleration * dt;
       }
 
-      this.vx *= this.friction;
-      this.vy *= this.friction;
+      this.vx *= this.friction * this.weatherFrictionMultiplier;
+      this.vy *= this.friction * this.weatherFrictionMultiplier;
 
       var gravityAlong = Math.sin(terrainAngle2) * this.gravity * 0.3;
       this.vx += gravityAlong * Math.cos(terrainAngle2) * dt;
@@ -678,6 +681,10 @@
     if (this.appliedStats) {
       this.applyGarageMods();
     }
+  };
+
+  proto.applyWeatherFriction = function(frictionMultiplier) {
+    this.weatherFrictionMultiplier = Math.max(0.1, Math.min(1.0, frictionMultiplier));
   };
 
   proto.isSpeedBoostActive = function() {
