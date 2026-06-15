@@ -103,7 +103,7 @@
   proto.createResultPanel = function(width, height) {
     var panelW = 420;
     var needStarPanel = this.win && this.starRating;
-    var coinExtraH = (this.coinReward > 0) ? 70 : 0;
+    var coinExtraH = (!this.seasonMode && this.coinReward > 0) ? 70 : 0;
     var panelH = needStarPanel ? (1060 + coinExtraH) : (this.win && this.detailedStats ? (860 + coinExtraH) : (430 + coinExtraH));
 
     var shadow = this.add.graphics();
@@ -167,7 +167,7 @@
       });
     }
 
-    if (this.coinReward > 0) {
+    if (!this.seasonMode && this.coinReward > 0) {
       var coinPanelY = (isNewRecord ? recordY : height / 2 - panelH / 2 + 220) + 50;
       if (needStarPanel) {
         coinPanelY += 70;

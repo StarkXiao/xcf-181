@@ -3419,15 +3419,17 @@
     var replayAnalysis = this.scoreManager.getReplayAnalysis();
 
     var coinReward = 0;
-    try {
-      if (this.dataManager) {
-        var garageMgr = this.dataManager.getGarageManager();
-        if (garageMgr) {
-          coinReward = garageMgr.applyCoinsFromRun(detailedStats);
+    if (!this.seasonMode) {
+      try {
+        if (this.dataManager) {
+          var garageMgr = this.dataManager.getGarageManager();
+          if (garageMgr) {
+            coinReward = garageMgr.applyCoinsFromRun(detailedStats);
+          }
         }
+      } catch (e) {
+        console.warn('[GameScene] applyCoinsFromRun error:', e);
       }
-    } catch (e) {
-      console.warn('[GameScene] applyCoinsFromRun error:', e);
     }
 
     var seasonResult = null;
