@@ -11,6 +11,11 @@
   var proto = MountainRacer.MenuScene.prototype;
 
   proto.create = function() {
+    this.dataManager = MountainRacer.DataManager.getInstance();
+    this.dataManager.init();
+    this.highScoreMgr = this.dataManager.getHighScoreManager();
+    this.unlockMgr = this.dataManager.getUnlockManager();
+
     var width = this.scale.width;
     var height = this.scale.height;
 
@@ -333,36 +338,11 @@
   };
 
   proto.getSavedStarRating = function(level) {
-    try {
-      var key = 'mountain_racer_stars_' + level;
-      var saved = localStorage.getItem(key);
-      return saved ? JSON.parse(saved) : { stars: 0, totalStars: 3 };
-    } catch (e) {
-      return { stars: 0, totalStars: 3 };
-    }
+    return this.highScoreMgr.getStarRating(level);
   };
 
   proto.getChapterStarSummary = function() {
-    try {
-      var totalLevels = 3;
-      var result = {
-        totalStars: 0,
-        maxStars: totalLevels * 3,
-        levelStars: {},
-        completionPercent: 0
-      };
-
-      for (var lvl = 1; lvl <= totalLevels; lvl++) {
-        var saved = this.getSavedStarRating(lvl);
-        result.levelStars[lvl] = saved.stars || 0;
-        result.totalStars += saved.stars || 0;
-      }
-
-      result.completionPercent = Math.floor((result.totalStars / result.maxStars) * 100);
-      return result;
-    } catch (e) {
-      return { totalStars: 0, maxStars: 9, levelStars: {}, completionPercent: 0 };
-    }
+    return this.highScoreMgr.getChapterStarSummary(3);
   };
 
   proto.createInstructions = function(width, height) {
@@ -409,24 +389,11 @@
   };
 
   proto.isLevelUnlocked = function(level) {
-    try {
-      var key = 'mountain_racer_unlocked';
-      var saved = localStorage.getItem(key);
-      var unlocked = saved ? JSON.parse(saved) : [1];
-      return Array.isArray(unlocked) && unlocked.indexOf(level) !== -1;
-    } catch (e) {
-      return level === 1;
-    }
+    return this.unlockMgr.isLevelUnlocked(level);
   };
 
   proto.getHighScore = function(level) {
-    try {
-      var key = 'mountain_racer_highscore_' + level;
-      var saved = localStorage.getItem(key);
-      return saved ? parseInt(saved, 10) : 0;
-    } catch (e) {
-      return 0;
-    }
+    return this.highScoreMgr.getHighScore(level);
   };
 
   window.MountainRacer = MountainRacer;

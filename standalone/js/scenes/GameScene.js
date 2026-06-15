@@ -12,6 +12,9 @@
 
   proto.init = function(data) {
     this.level = data.level || 1;
+    this.dataManager = MountainRacer.DataManager.getInstance();
+    this.dataManager.init();
+    this.unlockMgr = this.dataManager.getUnlockManager();
   };
 
   proto.create = function() {
@@ -23,6 +26,7 @@
 
     this.scoreManager = new MountainRacer.ScoreManager(this, this.level);
     this.scoreManager.setLevelLength(this.terrain.config.length);
+    this.scoreManager.loadPreviousBest();
 
     this.inputManager = new MountainRacer.InputManager(this);
     this.inputManager.setup();
@@ -2851,16 +2855,7 @@
     this.unlockedAchievements.push(achievement.id);
     this.showAchievementNotification(achievement);
     this.scoreManager.addBonusScore(300, 'explorationBonus');
-
-    try {
-      var key = 'mountain_racer_achievements';
-      var saved = localStorage.getItem(key);
-      var data = saved ? JSON.parse(saved) : [];
-      if (data.indexOf(achievement.id) === -1) {
-        data.push(achievement.id);
-        localStorage.setItem(key, JSON.stringify(data));
-      }
-    } catch (e) {}
+    this.unlockMgr.unlockAchievement(achievement.id);
   };
 
   proto.showAchievementNotification = function(achievement) {
