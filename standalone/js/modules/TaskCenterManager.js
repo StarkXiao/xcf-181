@@ -196,6 +196,8 @@
     this._updateGlobalStats(runStats);
 
     if (updated.length > 0) {
+      this._recalculateCompletedTaskCount();
+      this._checkStageRewards();
       this._dm._saveData();
       this._dm._emit('dailyChallengesUpdated', { updates: updated });
     }
@@ -256,7 +258,7 @@
     challenge.claimedTiers = claimed;
     this._dm._data.taskCenter.dailyChallenges[claimedKey] = claimed;
 
-    this._incrementCompletedTaskCount();
+    this._recalculateCompletedTaskCount();
     this._checkStageRewards();
     this._checkAchievements();
 
@@ -417,7 +419,6 @@
         if (unlockMgr.unlockAchievement(id)) {
           newlyUnlocked.push(ach);
           this._grantAchievementReward(ach);
-          this._incrementCompletedTaskCount();
         }
       }
     }
@@ -425,6 +426,8 @@
     this._dm._data.taskCenter.achievements = progress;
 
     if (newlyUnlocked.length > 0) {
+      this._recalculateCompletedTaskCount();
+      this._checkStageRewards();
       this._dm._saveData();
       this._dm._emit('achievementsUnlocked', { achievements: newlyUnlocked });
     }
@@ -493,12 +496,23 @@
     var total = 0;
 
     var dailyChallenges = this._dm._data.taskCenter.dailyChallenges || {};
-    var keys = Object.keys(dailyChallenges);
-    for (var k = 0; k < keys.length; k++) {
-      var key = keys[k];
-      if (key.indexOf('_claimed_') !== -1) {
-        var claimedList = dailyChallenges[key] || [];
-        total += claimedList.length;
+    var dailyProgress = this._dm._data.taskCenter.dailyProgress || {};
+    var dateKeys = {};
+
+    var allKeys = Object.keys(dailyChallenges);
+    for (var k = 0; k < allKeys.length; k++) {
+      var key = allKeys[k];
+      if (key.indexOf('_claimed_') !== -1) continue;
+      var challenges = dailyChallenges[key] || [];
+      var progressForDay = dailyProgress[key] || {};
+      for (var c = 0; c < challenges.length; c++) {
+        var ch = challenges[c];
+        var prog = progressForDay[ch.id] !== undefined ? progressForDay[ch.id] : (ch.progress || 0);
+        for (var t = 0; t < ch.targets.length; t++) {
+          if (prog >= ch.targets[t]) {
+            total++;
+          }
+        }
       }
     }
 
@@ -511,9 +525,7 @@
         claimedStages: []
       };
     }
-    if (this._dm._data.taskCenter.stageRewards.completedTaskCount !== total) {
-      this._dm._data.taskCenter.stageRewards.completedTaskCount = total;
-    }
+    this._dm._data.taskCenter.stageRewards.completedTaskCount = total;
     this._dm._data.taskCenter.completedDailyTasks = total;
     this._dm._data.taskCenter.completedAchievements = unlockedIds.length;
   };

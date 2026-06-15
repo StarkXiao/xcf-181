@@ -36,6 +36,16 @@
       self.updateHeader();
     });
 
+    this.dataManager.on('dailyChallengesUpdated', function() {
+      if (self.currentTab === 'daily') {
+        self.refreshContent();
+      }
+      if (self.currentTab === 'stages') {
+        self.refreshContent();
+      }
+      self.updateHeader();
+    });
+
     this.dataManager.on('stageRewardClaimed', function() {
       if (self.currentTab === 'stages') {
         self.refreshContent();
@@ -45,6 +55,16 @@
 
     this.dataManager.on('achievementsUnlocked', function() {
       if (self.currentTab === 'achievements') {
+        self.refreshContent();
+      }
+      if (self.currentTab === 'stages') {
+        self.refreshContent();
+      }
+      self.updateHeader();
+    });
+
+    this.dataManager.on('stageRewardsAvailable', function() {
+      if (self.currentTab === 'stages') {
         self.refreshContent();
       }
       self.updateHeader();
