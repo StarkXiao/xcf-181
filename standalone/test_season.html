@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>赛季生涯模式测试</title>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; padding: 20px; }
+    h1 { color: #ffd700; text-align: center; }
+    .card { background: rgba(255,255,255,0.05); border-radius: 12px; padding: 20px; margin: 15px auto; max-width: 900px; }
+    button { background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; padding: 12px 28px; border-radius: 8px; font-size: 16px; cursor: pointer; margin: 5px; }
+    button:hover { opacity: 0.9; }
+    button:disabled { opacity: 0.5; }
+    .result-item { padding: 10px 14px; margin: 4px 0; border-radius: 6px; font-family: Consolas, monospace; font-size: 13px; }
+    .pass { background: rgba(76,175,80,0.15); border-left: 4px solid #4caf50; }
+    .fail { background: rgba(244,67,54,0.15); border-left: 4px solid #f44336; }
+    .stats { display: flex; justify-content: space-around; margin: 15px 0; }
+    .stat { text-align: center; padding: 10px 20px; background: rgba(0,0,0,0.3); border-radius: 8px; }
+    .stat .num { font-size: 28px; font-weight: bold; }
+    .stat .label { font-size: 12px; color: #888; }
+    .green { color: #4caf50; }
+    .red { color: #f44336; }
+    .yellow { color: #ffd700; }
+    .info { background: rgba(100,181,246,0.1); padding: 12px; border-radius: 6px; margin: 10px 0; font-size: 14px; line-height: 1.6; }
+    .modules { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-top: 20px; }
+    .mod-card { background: rgba(0,0,0,0.25); padding: 15px; border-radius: 8px; border-top: 3px solid #667eea; }
+    .mod-card h3 { margin: 0 0 10px 0; color: #64b5f6; font-size: 15px; }
+    .mod-card p { margin: 4px 0; font-size: 13px; color: #ccc; }
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 3px solid #444; border-top-color: #ffd700; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .center { text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>🏁 赛季生涯模式 - 模块集成测试</h1>
+
+  <div class="card center">
+    <button id="runBtn" onclick="runAllTests()">🚀 运行所有测试</button>
+    <button onclick="showSeasonOverview()">📊 赛季概览</button>
+    <button onclick="resetSeasonData()">🔄 重置赛季数据</button>
+  </div>
+
+  <div class="card">
+    <div class="stats">
+      <div class="stat"><div class="num" id="totalTests">-</div><div class="label">测试总数</div></div>
+      <div class="stat"><div class="num green" id="passCount">-</div><div class="label">通过</div></div>
+      <div class="stat"><div class="num red" id="failCount">-</div><div class="label">失败</div></div>
+      <div class="stat"><div class="num yellow" id="passRate">-</div><div class="label">通过率</div></div>
+    </div>
+    <div id="statusMsg" class="info">点击"运行所有测试"按钮开始测试赛季生涯模式的所有模块。</div>
+  </div>
+
+  <div class="card" id="resultsCard" style="display:none;">
+    <h2 style="color:#64b5f6;">📋 测试结果详情</h2>
+    <div id="results"></div>
+  </div>
+
+  <div class="card" id="overviewCard" style="display:none;">
+    <h2 style="color:#ffd700;">📖 赛季生涯模式概览</h2>
+    <div class="modules">
+      <div class="mod-card">
+        <h3>🗺️ 章节地图系统</h3>
+        <p>📚 3个完整章节</p>
+        <p>📍 山麓启程 → 盘山险路 → 巅峰对决</p>
+        <p>🎯 21个节点（含事件和Boss战）</p>
+        <p>🔀 多路线分支选择</p>
+      </div>
+      <div class="mod-card">
+        <h3>⭐ 事件关卡系统</h3>
+        <p>⏱️ 时间挑战 / 🛡️ 无伤挑战</p>
+        <p>💎 收集挑战 / 🤸 特技大师</p>
+        <p>🔥 连击大师 / 🗺️ 探索者</p>
+        <p>💪 生存 / 🚀 极速 / 💯 完美 / 💰 寻宝</p>
+      </div>
+      <div class="mod-card">
+        <h3>🎁 奖励结算系统</h3>
+        <p>💰 金币奖励</p>
+        <p>⚙️ 部件解锁与升级</p>
+        <p>🚗 赛车解锁</p>
+        <p>🏅 成就与里程碑</p>
+      </div>
+      <div class="mod-card">
+        <h3>🚗 车辆成长体系</h3>
+        <p>6大类部件升级</p>
+        <p>4款赛车解锁</p>
+        <p>⭐ 赛季等级系统（10级）</p>
+        <p>📈 性能曲线追踪</p>
+      </div>
+      <div class="mod-card">
+        <h3>💾 进度保存</h3>
+        <p>✅ 节点通关状态</p>
+        <p>⭐ 星数评价记录</p>
+        <p>📊 最佳成绩统计</p>
+        <p>🎖️ 奖励领取状态</p>
+      </div>
+      <div class="mod-card">
+        <h3>🔗 系统联动</h3>
+        <p>⚙️ 性能 → 章节解锁门槛</p>
+        <p>⭐ 星数 → 后续章节解锁</p>
+        <p>🎖️ 赛季等级 → 专属奖励</p>
+        <p>📈 部件升级 → 关卡难度匹配</p>
+      </div>
+    </div>
+    <div id="seasonStats" style="margin-top: 20px;"></div>
+  </div>
+
+  <script src="js/phaser.min.js"></script>
+  <script src="js/modules/VersionMigration.js"></script>
+  <script src="js/modules/PartsConfig.js"></script>
+  <script src="js/modules/SeasonConfig.js"></script>
+  <script src="js/modules/GarageManager.js"></script>
+  <script src="js/modules/DataManager.js"></script>
+  <script src="js/modules/HighScoreManager.js"></script>
+  <script src="js/modules/UnlockManager.js"></script>
+  <script src="js/modules/SettingsManager.js"></script>
+  <script src="js/modules/SeasonDataManager.js"></script>
+  <script src="js/modules/EventLevelManager.js"></script>
+  <script src="js/modules/RewardSystem.js"></script>
+  <script src="js/modules/CarGrowthSystem.js"></script>
+
+  <script>
+    function runAllTests() {
+      const btn = document.getElementById('runBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>测试运行中...';
+      document.getElementById('statusMsg').innerHTML = '⏳ 正在执行所有测试，请稍候...';
+
+      setTimeout(function() {
+        var results = executeTests();
+        displayResults(results);
+        btn.disabled = false;
+        btn.innerHTML = '🚀 重新运行测试';
+      }, 300);
+    }
+
+    function executeTests() {
+      var tests = [];
+      var passed = 0;
+      var failed = 0;
+
+      function t(name, fn, mod) {
+        try {
+          var r = fn();
+          var ok = r === true || (r && r.success);
+          tests.push({ name: name, module: mod, pass: ok, detail: r });
+          if (ok) passed++; else failed++;
+        } catch (e) {
+          tests.push({ name: name, module: mod, pass: false, error: e.message });
+          failed++;
+        }
+      }
+
+      var MR = window.MountainRacer;
+
+      // 1. SeasonConfig 模块
+      t('SeasonConfig 模块存在', function() { return !!(MR && MR.SeasonConfig); }, 'SeasonConfig');
+      t('获取当前赛季配置', function() {
+        var s = MR.SeasonConfig.getCurrentSeason();
+        return s && s.id === 'season_1' && s.chapters.length === 3;
+      }, 'SeasonConfig');
+      t('获取章节列表', function() {
+        var chs = MR.SeasonConfig.getChaptersBySeason('season_1');
+        return chs.length === 3 && chs[0].id === 'chapter_1';
+      }, 'SeasonConfig');
+      t('获取节点配置', function() {
+        var n = MR.SeasonConfig.getNode('chapter_1', 'node_1_1');
+        return n && n.isStart === true;
+      }, 'SeasonConfig');
+      t('获取事件类型配置', function() {
+        var e = MR.SeasonConfig.getEventType('time_trial');
+        return e && e.name === '时间挑战';
+      }, 'SeasonConfig');
+      t('赛季等级XP映射', function() {
+        var lv = MR.SeasonConfig.getSeasonLevelByXP(350);
+        return lv.level === 3;
+      }, 'SeasonConfig');
+      t('下一级XP阈值', function() {
+        var next = MR.SeasonConfig.getNextLevelXP(50);
+        return next >= 100;
+      }, 'SeasonConfig');
+      t('获取章节起点节点', function() {
+        var n = MR.SeasonConfig.getChapterStartNode('chapter_1');
+        return n && n.id === 'node_1_1';
+      }, 'SeasonConfig');
+      t('获取章节终点节点', function() {
+        var ns = MR.SeasonConfig.getChapterEndNodes('chapter_1');
+        return ns.length >= 1 && ns[0].isEnd === true;
+      }, 'SeasonConfig');
+
+      // 2. DataManager 集成
+      t('DataManager 单例获取', function() {
+        var dm = MR.DataManager.getInstance();
+        dm.init();
+        return dm !== null;
+      }, 'DataManager 集成');
+      t('获取 SeasonDataManager', function() {
+        return MR.DataManager.getInstance().getSeasonDataManager() !== null;
+      }, 'DataManager 集成');
+      t('获取 EventLevelManager', function() {
+        return MR.DataManager.getInstance().getEventLevelManager() !== null;
+      }, 'DataManager 集成');
+      t('获取 RewardSystem', function() {
+        return MR.DataManager.getInstance().getRewardSystem() !== null;
+      }, 'DataManager 集成');
+      t('获取 CarGrowthSystem', function() {
+        return MR.DataManager.getInstance().getCarGrowthSystem() !== null;
+      }, 'DataManager 集成');
+
+      var dm = MR.DataManager.getInstance();
+      dm.init();
+      var sdm = dm.getSeasonDataManager();
+
+      // 3. SeasonDataManager 模块
+      t('获取当前赛季', function() {
+        return sdm.getCurrentSeason() !== null;
+      }, 'SeasonDataManager');
+      t('初始赛季XP', function() { return typeof sdm.getSeasonXP() === 'number'; }, 'SeasonDataManager');
+      t('初始赛季等级 ≥ 1', function() { return sdm.getSeasonLevel() >= 1; }, 'SeasonDataManager');
+      t('添加赛季XP', function() {
+        var before = sdm.getSeasonXP();
+        sdm.addSeasonXP(200, 'test');
+        return sdm.getSeasonXP() >= before + 200;
+      }, 'SeasonDataManager');
+      t('赛季等级进度', function() {
+        var p = sdm.getSeasonLevelProgress();
+        return p && typeof p.percent === 'number';
+      }, 'SeasonDataManager');
+      t('第一章解锁', function() { return sdm.isChapterUnlocked('chapter_1') === true; }, 'SeasonDataManager');
+      t('起始节点解锁', function() {
+        return sdm.isNodeUnlocked('chapter_1', 'node_1_1') === true;
+      }, 'SeasonDataManager');
+      t('设置当前章节', function() {
+        var r = sdm.setCurrentChapter('chapter_1');
+        return r.success === true;
+      }, 'SeasonDataManager');
+      t('设置当前节点', function() {
+        var r = sdm.setCurrentNode('node_1_1');
+        return r.success === true;
+      }, 'SeasonDataManager');
+      t('获取总星星数', function() { return typeof sdm.getTotalStars() === 'number'; }, 'SeasonDataManager');
+      t('更新节点进度', function() {
+        var r = sdm.updateNodeProgress('chapter_1', 'node_1_1', {
+          isComplete: true, score: 5000, time: 80, stars: 2, distance: 8000
+        });
+        return r.success === true;
+      }, 'SeasonDataManager');
+      t('后续节点解锁', function() {
+        return sdm.isNodeUnlocked('chapter_1', 'node_1_2') === true &&
+               sdm.isNodeUnlocked('chapter_1', 'node_1_3') === true;
+      }, 'SeasonDataManager');
+      t('章节星星统计', function() {
+        var s = sdm.getChapterStars('chapter_1');
+        return s.earned >= 2;
+      }, 'SeasonDataManager');
+      t('获取赛季总结', function() {
+        var s = sdm.getSeasonSummary();
+        return s && s.chapters.length === 3;
+      }, 'SeasonDataManager');
+      t('获取游戏统计', function() {
+        var ps = sdm.getPlayStats();
+        return typeof ps.totalRuns === 'number';
+      }, 'SeasonDataManager');
+
+      // 4. EventLevelManager 模块
+      var elm = dm.getEventLevelManager();
+      t('初始化事件关卡', function() {
+        sdm.setCurrentChapter('chapter_1');
+        var r = elm.initializeEvent('chapter_1', 'node_1_2');
+        elm.cancelEvent();
+        return r.success === true;
+      }, 'EventLevelManager');
+      t('事件类型匹配', function() {
+        sdm.setCurrentChapter('chapter_1');
+        elm.initializeEvent('chapter_1', 'node_1_2');
+        var ok = elm.getActiveEvent() && elm.getActiveEvent().eventType === 'time_trial';
+        elm.cancelEvent();
+        return ok;
+      }, 'EventLevelManager');
+      t('伤害事件追踪（无伤模式）', function() {
+        sdm.setCurrentChapter('chapter_1');
+        elm.initializeEvent('chapter_1', 'node_1_3');
+        elm.trackEvent('damage', { amount: 10 });
+        var ctx = elm.getEventContext();
+        elm.cancelEvent();
+        return ctx.tracking.damageTaken === 10;
+      }, 'EventLevelManager');
+      t('收集事件追踪', function() {
+        // chapter_2的node_2_2是collect_all事件，先解锁前置条件
+        sdm.addSeasonXP(500, 'unlock');
+        sdm.unlockChapter('chapter_2');
+        sdm.updateNodeProgress('chapter_1', 'node_1_1', { isComplete: true, stars: 3, time: 60 });
+        sdm.updateNodeProgress('chapter_2', 'node_2_1', { isComplete: true, stars: 3, time: 90 });
+        elm.initializeEvent('chapter_2', 'node_2_2');
+        elm.trackEvent('collect', { collectibleId: 'c1', collectibleType: 'coin', value: 10 });
+        var ctx = elm.getEventContext();
+        elm.cancelEvent();
+        return ctx && ctx.tracking.collected === 1;
+      }, 'EventLevelManager');
+      t('事件取消', function() {
+        elm.initializeEvent('chapter_1', 'node_1_2');
+        var r = elm.cancelEvent();
+        return r.success === true && !elm.isEventActive();
+      }, 'EventLevelManager');
+
+      // 5. RewardSystem 模块
+      var rs = dm.getRewardSystem();
+      t('节点奖励预览', function() {
+        var p = rs.getNodeRewardsPreview('chapter_1', 'node_1_1');
+        return p && p.coins === 200;
+      }, 'RewardSystem');
+      t('章节奖励预览', function() {
+        var p = rs.getChapterRewardsPreview('chapter_1');
+        return p && typeof p.coins === 'number';
+      }, 'RewardSystem');
+      t('成长进度计算', function() {
+        var g = rs.calculateGrowthProgress();
+        return g && typeof g.overallGrowth === 'number';
+      }, 'RewardSystem');
+      t('初始化赛季比赛', function() {
+        sdm.setCurrentChapter('chapter_1');
+        var r = rs.initializeSeasonRace('chapter_1', 'node_1_1');
+        sdm.clearRunContext();
+        return r.success === true;
+      }, 'RewardSystem');
+      t('初始化Boss战', function() {
+        // Boss战解锁条件：node_1_4通关 + 章节累计6颗星
+        sdm.updateNodeProgress('chapter_1', 'node_1_1', { isComplete: true, stars: 3, time: 60 });
+        sdm.updateNodeProgress('chapter_1', 'node_1_2', { isComplete: true, stars: 2, time: 90 });
+        sdm.updateNodeProgress('chapter_1', 'node_1_3', { isComplete: true, stars: 2, time: 95 });
+        sdm.updateNodeProgress('chapter_1', 'node_1_4', { isComplete: true, stars: 2, time: 100 });
+        var r = rs.initializeSeasonRace('chapter_1', 'node_1_5');
+        sdm.clearRunContext();
+        return r.success === true && r.mode === 'season_boss';
+      }, 'RewardSystem');
+
+      // 6. CarGrowthSystem 模块
+      var cgs = dm.getCarGrowthSystem();
+      t('获取成长统计', function() {
+        var s = cgs.getGrowthStats();
+        return s && typeof s.currentPerformance === 'number';
+      }, 'CarGrowthSystem');
+      t('推荐升级建议', function() {
+        var r = cgs.getRecommendedUpgrades('chapter_1');
+        return r && typeof r.ready === 'boolean';
+      }, 'CarGrowthSystem');
+      t('章节解锁提示', function() {
+        var h = cgs.getChapterUnlockHints('chapter_2');
+        return h && Array.isArray(h.requirements);
+      }, 'CarGrowthSystem');
+      t('节点解锁提示', function() {
+        var h = cgs.getNodeUnlockHints('chapter_1', 'node_1_4');
+        return h && typeof h.unlocked === 'boolean';
+      }, 'CarGrowthSystem');
+      t('成长里程碑', function() {
+        var m = cgs.getGrowthMilestones();
+        return m && Array.isArray(m.milestones) && m.milestones.length === 9;
+      }, 'CarGrowthSystem');
+      t('性能曲线', function() {
+        var c = cgs.getPowerCurve();
+        return c && Array.isArray(c.categories) && c.categories.length === 6;
+      }, 'CarGrowthSystem');
+      t('初始生命值计算', function() {
+        var h = cgs.getStartingHealth();
+        return h >= 80 && h <= 200;
+      }, 'CarGrowthSystem');
+
+      // 7. 赛季奖励处理流程
+      t('赛季模式 - 比赛奖励流程', function() {
+        sdm.setCurrentChapter('chapter_1');
+        sdm.setRunContext({ mode: 'season_race', chapterId: 'chapter_1', nodeId: 'node_1_4', nodeType: 'race' });
+        var r = rs.processGameRunRewards({
+          isComplete: true, totalScore: 8000, time: 60, distance: 10000, health: 90, perfectRun: false, starRating: { stars: 2 }
+        }, { stars: 2 }, true);
+        return r && r.success === true;
+      }, '集成测试');
+      t('赛季等级升级触发', function() {
+        var before = sdm.getSeasonLevel();
+        sdm.addSeasonXP(5000, 'level_test');
+        var after = sdm.getSeasonLevel();
+        return after >= before;
+      }, '集成测试');
+      t('赛季等级奖励领取', function() {
+        var r = rs.claimSeasonLevelReward(Math.min(sdm.getSeasonLevel(), 3));
+        return typeof r.success === 'boolean';
+      }, '集成测试');
+
+      return {
+        total: tests.length,
+        passed: passed,
+        failed: failed,
+        tests: tests
+      };
+    }
+
+    function displayResults(r) {
+      document.getElementById('totalTests').textContent = r.total;
+      document.getElementById('passCount').textContent = r.passed;
+      document.getElementById('failCount').textContent = r.failed;
+      var rate = Math.floor((r.passed / r.total) * 100);
+      document.getElementById('passRate').textContent = rate + '%';
+
+      if (r.failed === 0) {
+        document.getElementById('statusMsg').className = 'info green';
+        document.getElementById('statusMsg').innerHTML = '🎉 <strong>恭喜！所有 ' + r.total + ' 个测试全部通过！</strong>赛季生涯模式的5个核心模块均正常工作，系统集成完整。';
+      } else {
+        document.getElementById('statusMsg').className = 'info red';
+        document.getElementById('statusMsg').innerHTML = '⚠️ 有 ' + r.failed + ' 个测试失败，请查看下方详情。';
+      }
+
+      document.getElementById('resultsCard').style.display = 'block';
+      var html = '';
+      var mods = {};
+      r.tests.forEach(function(t) {
+        mods[t.module] = mods[t.module] || [];
+        mods[t.module].push(t);
+      });
+
+      Object.keys(mods).forEach(function(modName) {
+        var list = mods[modName];
+        var p = list.filter(x => x.pass).length;
+        html += '<div style="margin: 20px 0;">';
+        html += '<h3 style="margin: 0 0 10px 0; color: #64b5f6; padding-bottom: 8px; border-bottom: 1px solid rgba(100,181,246,0.2);">';
+        html += '📦 ' + modName + ' <span style="font-size: 13px; color: #888;">(' + p + '/' + list.length + '通过)</span></h3>';
+        list.forEach(function(t) {
+          var cls = t.pass ? 'result-item pass' : 'result-item fail';
+          var icon = t.pass ? '✅' : '❌';
+          html += '<div class="' + cls + '"><span>' + icon + ' ' + t.name;
+          if (!t.pass && t.detail) {
+            html += ' <span style="color:#f44336; font-size:12px;">-> ' + JSON.stringify(t.detail) + '</span>';
+          }
+          if (!t.pass && t.error) {
+            html += ' <span style="color:#f44336; font-size:12px;">-> ' + t.error + '</span>';
+          }
+          html += '</span></div>';
+        });
+        html += '</div>';
+      });
+
+      document.getElementById('results').innerHTML = html;
+    }
+
+    function showSeasonOverview() {
+      document.getElementById('overviewCard').style.display = 'block';
+      document.getElementById('overviewCard').scrollIntoView({ behavior: 'smooth' });
+
+      var dm = MR.DataManager.getInstance();
+      dm.init();
+      var sdm = dm.getSeasonDataManager();
+      var rs = dm.getRewardSystem();
+      var growth = rs.calculateGrowthProgress();
+      var lv = sdm.getSeasonLevelProgress();
+
+      var html = '<div class="stats" style="margin-top: 20px;">';
+      html += '<div class="stat"><div class="num yellow">Lv.' + lv.level + '</div><div class="label">' + lv.title + '</div></div>';
+      html += '<div class="stat"><div class="num green">⭐ ' + growth.totalStars + '</div><div class="label">赛季星星</div></div>';
+      html += '<div class="stat"><div class="num">' + growth.performanceRating + '</div><div class="label">车辆性能</div></div>';
+      html += '<div class="stat"><div class="num yellow">💰 ' + growth.coins + '</div><div class="label">金币余额</div></div>';
+      html += '</div>';
+
+      document.getElementById('seasonStats').innerHTML = html;
+    }
+
+    function resetSeasonData() {
+      if (!confirm('确定要重置所有赛季进度数据吗？此操作不可撤销。')) return;
+      var dm = MR.DataManager.getInstance();
+      dm.init();
+      dm.getSeasonDataManager().resetSeasonProgress(false);
+      alert('✅ 赛季进度已重置！');
+    }
+
+    var MR = window.MountainRacer;
+    if (MR && MR.SeasonConfig) {
+      setTimeout(function() {
+        document.getElementById('statusMsg').innerHTML = '✅ 核心模块已加载完毕，点击"运行所有测试"开始验证。';
+      }, 500);
+    }
+  </script>
+</body>
+</html>

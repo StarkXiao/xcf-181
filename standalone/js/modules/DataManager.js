@@ -68,6 +68,36 @@
         level_2: { minPower: 80, coinsRequired: 0 },
         level_3: { minPower: 200, coinsRequired: 0 }
       }
+    },
+    season: {
+      currentSeason: 'season_1',
+      currentChapter: null,
+      currentNode: null,
+      seasonXP: 0,
+      seasonLevel: 1,
+      unlockedSeasons: ['season_1'],
+      unlockedChapters: ['chapter_1'],
+      unlockedNodes: {
+        chapter_1: ['node_1_1']
+      },
+      nodeProgress: {},
+      chapterProgress: {},
+      seasonProgress: {},
+      claimedRewards: {
+        seasonLevels: [],
+        chapters: [],
+        nodes: []
+      },
+      playStats: {
+        totalRuns: 0,
+        totalWins: 0,
+        totalDistance: 0,
+        totalCoinsEarned: 0,
+        totalSeasonXPEarned: 0,
+        bestScorePerNode: {},
+        bestTimePerNode: {}
+      },
+      currentRunContext: null
     }
   };
 
@@ -130,6 +160,10 @@
       this._unlockManager = new MountainRacer.UnlockManager(this);
       this._settingsManager = new MountainRacer.SettingsManager(this);
       this._garageManager = new MountainRacer.GarageManager(this);
+      this._seasonDataManager = null;
+      this._eventLevelManager = null;
+      this._rewardSystem = null;
+      this._carGrowthSystem = null;
       this._initialized = true;
         this._emit('initialized', { version: this._data._version });
         return true;
@@ -436,6 +470,38 @@
         this._garageManager = new MountainRacer.GarageManager(this);
       }
       return this._garageManager;
+    };
+
+    proto.getSeasonDataManager = function() {
+      if (!this._initialized) this.init();
+      if (!this._seasonDataManager) {
+        this._seasonDataManager = new MountainRacer.SeasonDataManager(this);
+      }
+      return this._seasonDataManager;
+    };
+
+    proto.getEventLevelManager = function() {
+      if (!this._initialized) this.init();
+      if (!this._eventLevelManager) {
+        this._eventLevelManager = new MountainRacer.EventLevelManager(this);
+      }
+      return this._eventLevelManager;
+    };
+
+    proto.getRewardSystem = function() {
+      if (!this._initialized) this.init();
+      if (!this._rewardSystem) {
+        this._rewardSystem = new MountainRacer.RewardSystem(this);
+      }
+      return this._rewardSystem;
+    };
+
+    proto.getCarGrowthSystem = function() {
+      if (!this._initialized) this.init();
+      if (!this._carGrowthSystem) {
+        this._carGrowthSystem = new MountainRacer.CarGrowthSystem(this);
+      }
+      return this._carGrowthSystem;
     };
 
     proto.on = function(event, callback) {
