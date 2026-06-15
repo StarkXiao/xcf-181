@@ -57,6 +57,7 @@
         MountainRacer.MenuScene,
         MountainRacer.ChapterMapScene,
         MountainRacer.GarageScene,
+        MountainRacer.TaskCenterScene,
         MountainRacer.GameScene,
         MountainRacer.GameOverScene
       ],

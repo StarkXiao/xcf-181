@@ -3432,6 +3432,33 @@
       }
     }
 
+    try {
+      if (this.dataManager) {
+        var taskCenter = this.dataManager.getTaskCenterManager();
+        if (taskCenter) {
+          var branchesExplored = this.terrain && this.terrain.exploredBranches ? this.terrain.exploredBranches.length : 0;
+          var taskStats = {
+            totalScore: this.scoreManager.getScore(),
+            distance: this.carPhysics ? Math.floor(this.carPhysics.car.x) : 0,
+            maxSpeed: Math.floor((this.scoreManager.maxSpeed || 0) * 3.6),
+            maxCombo: this.scoreManager.maxCombo || 0,
+            collectibles: this.scoreManager.totalCollected || 0,
+            stars: starRating ? (starRating.stars || 0) : 0,
+            isComplete: win,
+            damageTaken: this.scoreManager.totalDamageTaken || 0,
+            airTime: this.scoreManager.totalAirTime || 0,
+            branchesExplored: branchesExplored,
+            jumpCount: 0,
+            coinsEarned: coinReward,
+            branchDistances: this.terrain && this.terrain.branchDistances ? this.terrain.branchDistances : {}
+          };
+          taskCenter.processGameEnd(taskStats);
+        }
+      }
+    } catch (e) {
+      console.warn('[GameScene] taskCenter processGameEnd error:', e);
+    }
+
     var seasonResult = null;
     if (this.seasonMode && this.chapterId && this.nodeId) {
       try {

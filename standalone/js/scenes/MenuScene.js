@@ -18,6 +18,7 @@
     this.garageMgr = this.dataManager.getGarageManager();
     this.seasonDM = this.dataManager.getSeasonDataManager();
     this.carGrowth = this.dataManager.getCarGrowthSystem();
+    this.taskCenter = this.dataManager.getTaskCenterManager();
 
     var width = this.scale.width;
     var height = this.scale.height;
@@ -27,6 +28,7 @@
     this.createTopBar(width, height);
     this.createSeasonProgress(width, height);
     this.createSeasonEntryButton(width, height);
+    this.createTaskCenterButton(width, height);
     this.createInstructions(width, height);
     this.createControlsHint(width, height);
     this.createGarageButton(width, height);
@@ -210,6 +212,88 @@
     });
 
     this.garageButton = container;
+  };
+
+  proto.createTaskCenterButton = function(width, height) {
+    var btnX = width - 80;
+    var btnY = 445;
+    var btnW = 120;
+    var btnH = 80;
+
+    var container = this.add.container(btnX, btnY);
+    container.setSize(btnW, btnH);
+
+    var taskState = this.taskCenter.getTaskCenterIconState();
+
+    var gfx = this.add.graphics();
+    gfx.fillStyle(0x9c27b0, 0.95);
+    gfx.fillRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 14);
+    gfx.lineGradientStyle(3, 0xce93d8, 0xce93d8, 0x7b1fa2, 0x7b1fa2, 1);
+    gfx.strokeRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 14);
+
+    var icon = this.add.text(0, -12, '📋', {
+      fontSize: '32px'
+    }).setOrigin(0.5);
+
+    var label = this.add.text(0, 18, '任务中心', {
+      fontSize: '14px',
+      fontWeight: 'bold',
+      color: '#ffffff',
+      stroke: '#4a148c',
+      strokeThickness: 2
+    }).setOrigin(0.5);
+
+    container.add([gfx, icon, label]);
+
+    if (taskState.hasClaimable) {
+      var badgeBg = this.add.graphics();
+      badgeBg.fillStyle(0xe94560, 1);
+      badgeBg.fillCircle(btnW / 2 - 10, -btnH / 2 + 10, 16);
+      badgeBg.lineStyle(2, 0xffffff, 1);
+      badgeBg.strokeCircle(btnW / 2 - 10, -btnH / 2 + 10, 16);
+      container.add(badgeBg);
+
+      var badgeText = this.add.text(btnW / 2 - 10, -btnH / 2 + 10, taskState.claimableCount > 99 ? '99+' : taskState.claimableCount, {
+        fontSize: '14px',
+        fontWeight: 'bold',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+      container.add(badgeText);
+
+      this.tweens.add({
+        targets: [badgeBg, badgeText],
+        scale: 1.1,
+        duration: 600,
+        ease: 'Sine.easeInOut',
+        yoyo: true,
+        repeat: -1
+      });
+    }
+
+    var self = this;
+    container.setInteractive(
+      new Phaser.Geom.Rectangle(-btnW / 2, -btnH / 2, btnW, btnH),
+      Phaser.Geom.Rectangle.Contains
+    );
+    container.on('pointerover', function() {
+      self.tweens.add({ targets: this, scale: 1.08, duration: 150, ease: 'Power2' });
+    });
+    container.on('pointerout', function() {
+      self.tweens.add({ targets: this, scale: 1.0, duration: 150, ease: 'Power2' });
+    });
+    container.on('pointerdown', function() {
+      self.tweens.add({
+        targets: this,
+        scale: 0.95,
+        duration: 80,
+        yoyo: true,
+        onComplete: function() {
+          self.scene.start('TaskCenterScene');
+        }
+      });
+    });
+
+    this.taskCenterButton = container;
   };
 
   proto.createInstructions = function(width, height) {

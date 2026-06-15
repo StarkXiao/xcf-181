@@ -98,6 +98,32 @@
         bestTimePerNode: {}
       },
       currentRunContext: null
+    },
+    taskCenter: {
+      dailyChallenges: {},
+      dailyProgress: {},
+      achievements: {},
+      stageRewards: {
+        completedTaskCount: 0,
+        claimedStages: []
+      },
+      stats: {
+        totalRaces: 0,
+        totalDistance: 0,
+        totalStars: 0,
+        totalCoinsEarned: 0,
+        maxSpeed: 0,
+        maxCombo: 0,
+        maxAirTime: 0,
+        totalJumps: 0,
+        consecutiveDays: 0,
+        totalDays: 0,
+        lastLoginDate: null,
+        firstLoginDate: null
+      },
+      completedDailyTasks: 0,
+      completedAchievements: 0,
+      pendingRewards: []
     }
   };
 
@@ -164,6 +190,7 @@
       this._eventLevelManager = null;
       this._rewardSystem = null;
       this._carGrowthSystem = null;
+      this._taskCenterManager = null;
       this._initialized = true;
         this._emit('initialized', { version: this._data._version });
         return true;
@@ -502,6 +529,14 @@
         this._carGrowthSystem = new MountainRacer.CarGrowthSystem(this);
       }
       return this._carGrowthSystem;
+    };
+
+    proto.getTaskCenterManager = function() {
+      if (!this._initialized) this.init();
+      if (!this._taskCenterManager) {
+        this._taskCenterManager = new MountainRacer.TaskCenterManager(this);
+      }
+      return this._taskCenterManager;
     };
 
     proto.on = function(event, callback) {
