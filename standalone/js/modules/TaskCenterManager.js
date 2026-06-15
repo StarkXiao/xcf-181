@@ -47,6 +47,13 @@
     if (stats.firstLoginDate === undefined) stats.firstLoginDate = null;
     if (stats.totalJumps === undefined) stats.totalJumps = 0;
     if (stats.maxAirTime === undefined) stats.maxAirTime = 0;
+
+    if (!this._dm._data.taskCenter.stageRewards) {
+      this._dm._data.taskCenter.stageRewards = {
+        completedTaskCount: 0,
+        claimedStages: []
+      };
+    }
   };
 
   proto._updateLoginStreak = function() {
@@ -470,11 +477,50 @@
   };
 
   proto._incrementCompletedTaskCount = function() {
-    this._dm._data.taskCenter.completedDailyTasks++;
+    this._ensureInitialized();
+    if (!this._dm._data.taskCenter.stageRewards) {
+      this._dm._data.taskCenter.stageRewards = {
+        completedTaskCount: 0,
+        claimedStages: []
+      };
+    }
+    this._dm._data.taskCenter.stageRewards.completedTaskCount++;
+    this._dm._data.taskCenter.completedDailyTasks = this._dm._data.taskCenter.stageRewards.completedTaskCount;
+  };
+
+  proto._recalculateCompletedTaskCount = function() {
+    this._ensureInitialized();
+    var total = 0;
+
+    var dailyChallenges = this._dm._data.taskCenter.dailyChallenges || {};
+    var keys = Object.keys(dailyChallenges);
+    for (var k = 0; k < keys.length; k++) {
+      var key = keys[k];
+      if (key.indexOf('_claimed_') !== -1) {
+        var claimedList = dailyChallenges[key] || [];
+        total += claimedList.length;
+      }
+    }
+
+    var unlockedIds = this._dm.getUnlockManager().getUnlockedAchievements();
+    total += unlockedIds.length;
+
+    if (!this._dm._data.taskCenter.stageRewards) {
+      this._dm._data.taskCenter.stageRewards = {
+        completedTaskCount: 0,
+        claimedStages: []
+      };
+    }
+    if (this._dm._data.taskCenter.stageRewards.completedTaskCount !== total) {
+      this._dm._data.taskCenter.stageRewards.completedTaskCount = total;
+    }
+    this._dm._data.taskCenter.completedDailyTasks = total;
+    this._dm._data.taskCenter.completedAchievements = unlockedIds.length;
   };
 
   proto.getStageRewards = function() {
     this._ensureInitialized();
+    this._recalculateCompletedTaskCount();
     var stages = MountainRacer.TaskCenterConfig.getStageRewards();
     var state = this._dm._data.taskCenter.stageRewards;
     var result = [];
@@ -510,29 +556,35 @@
 
   proto.claimStageReward = function(stageId) {
     this._ensureInitialized();
-    var stages = this.getStageRewards();
-    var stage = null;
+    this._recalculateCompletedTaskCount();
 
-    for (var i = 0; i < stages.length; i++) {
-      if (stages[i].id === stageId) {
-        stage = stages[i];
+    var state = this._dm._data.taskCenter.stageRewards;
+    var stagesConfig = MountainRacer.TaskCenterConfig.getStageRewards();
+    var stageConfig = null;
+
+    for (var i = 0; i < stagesConfig.length; i++) {
+      if (stagesConfig[i].id === stageId) {
+        stageConfig = stagesConfig[i];
         break;
       }
     }
 
-    if (!stage) {
+    if (!stageConfig) {
       return { success: false, reason: 'stage_not_found' };
     }
 
-    if (stage.claimed) {
+    var isClaimed = state.claimedStages.indexOf(stageId) !== -1;
+    var canClaim = state.completedTaskCount >= stageConfig.requiredTasks && !isClaimed;
+
+    if (isClaimed) {
       return { success: false, reason: 'already_claimed' };
     }
 
-    if (!stage.canClaim) {
+    if (!canClaim) {
       return { success: false, reason: 'not_completed' };
     }
 
-    var reward = stage.reward;
+    var reward = JSON.parse(JSON.stringify(stageConfig.reward));
     var garageMgr = this._dm.getGarageManager();
     var seasonDM = this._dm.getSeasonDataManager();
 
@@ -559,20 +611,30 @@
       }
     }
 
-    this._dm._data.taskCenter.stageRewards.claimedStages.push(stageId);
+    state.claimedStages.push(stageId);
     this._dm._saveData();
+
+    var resultStage = {
+      ...stageConfig,
+      currentProgress: state.completedTaskCount,
+      required: stageConfig.requiredTasks,
+      percent: 100,
+      canClaim: false,
+      claimed: true
+    };
 
     this._dm._emit('stageRewardClaimed', {
       stageId: stageId,
       reward: reward
     });
 
-    return { success: true, reward: reward, stage: stage };
+    return { success: true, reward: reward, stage: resultStage };
   };
 
   proto.getSummary = function() {
     this._ensureInitialized();
     this._updateLoginStreak();
+    this._recalculateCompletedTaskCount();
 
     var daily = this.getDailyChallenges();
     var achievements = this.getAchievements();
